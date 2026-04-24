@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Search, FilterX, ChevronLeft, ChevronRight } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { COUNTRIES } from "@/lib/countries";
 
 export default function Indicators() {
   const [search, setSearch] = useState("");
@@ -78,12 +79,11 @@ export default function Indicators() {
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Country" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-h-72 overflow-y-auto">
             <SelectItem value="all">All Countries</SelectItem>
-            <SelectItem value="US">United States</SelectItem>
-            <SelectItem value="CN">China</SelectItem>
-            <SelectItem value="RU">Russia</SelectItem>
-            <SelectItem value="IR">Iran</SelectItem>
+            {COUNTRIES.map(c => (
+              <SelectItem key={c.code} value={c.code}>{c.name} ({c.code})</SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <Button variant="outline" onClick={resetFilters} title="Reset Filters">
