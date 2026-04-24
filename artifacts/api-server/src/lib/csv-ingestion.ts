@@ -109,6 +109,24 @@ function detectIndicatorType(value: string, feed_type: string): string {
   return typeMap[feed_type] ?? "unknown";
 }
 
+/** Returns true when a string looks like an actual indicator value rather than a header label */
+function looksLikeIndicatorValue(value: string): boolean {
+  const v = value.trim();
+  // IPv4 / CIDR
+  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(\/\d+)?$/.test(v)) return true;
+  // MD5
+  if (/^[0-9a-f]{32}$/i.test(v)) return true;
+  // SHA-1
+  if (/^[0-9a-f]{40}$/i.test(v)) return true;
+  // SHA-256
+  if (/^[0-9a-f]{64}$/i.test(v)) return true;
+  // URL
+  if (/^https?:\/\//i.test(v)) return true;
+  // Domain-like (has a dot and valid TLD, not all-digits)
+  if (/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(v) && /[a-z]/i.test(v)) return true;
+  return false;
+}
+
 export function parseCsvToIndicators(
   csvContent: string,
   sourceFeed: string,
@@ -117,36 +135,66 @@ export function parseCsvToIndicators(
   const errors: string[] = [];
   const indicators: NormalizedIndicator[] = [];
 
-  const lines = csvContent.split(/\r?\n/).filter((l) => l.trim() !== "");
+  // Support both comma and tab-delimited, and handle BOM
+  const cleaned = csvContent.replace(/^\uFEFF/, "");
+  const lines = cleaned.split(/\r?\n/).filter((l) => l.trim() !== "");
 
-  let headerLine = -1;
-  let headers: string[] = [];
-  for (let i = 0; i < Math.min(lines.length, 10); i++) {
-    if (!lines[i].startsWith("#") && !lines[i].startsWith(";")) {
-      headerLine = i;
-      headers = parseCsvLine(lines[i]);
+  // Find the first non-comment line to inspect
+  let firstDataLineIdx = -1;
+  for (let i = 0; i < Math.min(lines.length, 20); i++) {
+    const l = lines[i].trim();
+    if (l !== "" && !l.startsWith("#") && !l.startsWith(";") && !l.startsWith("//")) {
+      firstDataLineIdx = i;
       break;
     }
   }
 
-  if (headerLine === -1) {
-    errors.push("Could not find header row (all lines start with # or ;)");
+  if (firstDataLineIdx === -1) {
+    errors.push("No data found — all lines are empty or comments");
     return { indicators, errors };
   }
 
-  const fieldMap = detectFieldMapping(headers);
+  // Auto-detect delimiter (comma vs tab)
+  const sampleLine = lines[firstDataLineIdx];
+  const delimiter = sampleLine.includes("\t") ? "\t" : ",";
 
-  if (fieldMap.indicator === undefined) {
-    errors.push("Could not detect indicator column");
-    return { indicators, errors };
+  const splitLine = (line: string): string[] => {
+    if (delimiter === "\t") return line.split("\t").map((c) => c.trim());
+    return parseCsvLine(line);
+  };
+
+  const firstLineCols = splitLine(sampleLine);
+  const firstColValue = firstLineCols[0]?.trim() ?? "";
+
+  // If the first data line looks like an actual indicator value (IP, hash, domain, URL),
+  // this is a headerless plain-text list — treat ALL data lines as indicators
+  const isHeaderless = looksLikeIndicatorValue(firstColValue);
+
+  let fieldMap: Record<string, number>;
+  let dataStartIdx: number;
+
+  if (isHeaderless) {
+    // No header row — column 0 is always the indicator, everything else is ignored
+    fieldMap = { indicator: 0 };
+    dataStartIdx = firstDataLineIdx; // include the first data line
+  } else {
+    // Treat first data line as CSV header
+    fieldMap = detectFieldMapping(firstLineCols);
+    dataStartIdx = firstDataLineIdx + 1;
+
+    if (fieldMap.indicator === undefined) {
+      errors.push("Could not detect indicator column from header");
+      return { indicators, errors };
+    }
   }
 
-  for (let i = headerLine + 1; i < lines.length; i++) {
+  for (let i = dataStartIdx; i < lines.length; i++) {
     const line = lines[i];
-    if (line.startsWith("#") || line.startsWith(";") || line.trim() === "") continue;
+    const trimmed = line.trim();
+    if (trimmed === "" || trimmed.startsWith("#") || trimmed.startsWith(";") || trimmed.startsWith("//")) continue;
 
     try {
-      const cols = parseCsvLine(line);
+      const cols = splitLine(line);
       const rawIndicator = sanitizeField(cols[fieldMap.indicator]);
       if (!rawIndicator) continue;
 
