@@ -8,6 +8,7 @@ import {
   DeleteFeedParams,
 } from "@workspace/api-zod";
 import { normalizeCsvContent, fetchAndNormalize } from "../lib/csv-ingestion";
+import { logImport } from "../lib/history";
 
 const router = Router();
 
@@ -83,12 +84,39 @@ router.post("/:id/fetch", async (req, res) => {
   }
 
   const result = await fetchAndNormalize(feed);
+  await logImport({
+    source_name: feed.name,
+    source_url: feed.url,
+    feed_type: feed.feed_type,
+    result: {
+      indicators_added: result.indicators_added,
+      indicators_updated: result.indicators_updated,
+      indicators_skipped: result.indicators_skipped,
+      errors: result.error ? [result.error] : [],
+    },
+  });
   res.json(result);
 });
 
 router.post("/fetch-all", async (req, res) => {
   const feeds = await db.select().from(feedsTable).where(eq(feedsTable.enabled, true));
   const results = await Promise.all(feeds.map((feed) => fetchAndNormalize(feed)));
+
+  await Promise.all(
+    results.map((result, i) =>
+      logImport({
+        source_name: feeds[i].name,
+        source_url: feeds[i].url,
+        feed_type: feeds[i].feed_type,
+        result: {
+          indicators_added: result.indicators_added,
+          indicators_updated: result.indicators_updated,
+          indicators_skipped: result.indicators_skipped,
+          errors: result.error ? [result.error] : [],
+        },
+      })
+    )
+  );
 
   const total_added = results.reduce((sum, r) => sum + r.indicators_added, 0);
   const total_updated = results.reduce((sum, r) => sum + r.indicators_updated, 0);
