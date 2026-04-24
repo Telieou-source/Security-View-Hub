@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, feedsTable, indicatorsTable } from "@workspace/db";
-import { eq, sql, count, gte } from "drizzle-orm";
+import { db, indicatorsTable } from "@workspace/db";
+import { sql, count, gte } from "drizzle-orm";
 
 const router = Router();
 
@@ -8,15 +8,6 @@ router.get("/", async (req, res) => {
   const [{ total_indicators }] = await db
     .select({ total_indicators: count() })
     .from(indicatorsTable);
-
-  const [{ total_feeds }] = await db
-    .select({ total_feeds: count() })
-    .from(feedsTable);
-
-  const [{ active_feeds }] = await db
-    .select({ active_feeds: count() })
-    .from(feedsTable)
-    .where(eq(feedsTable.enabled, true));
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -29,17 +20,22 @@ router.get("/", async (req, res) => {
     .select({ unique_countries: sql<number>`count(distinct ${indicatorsTable.country})` })
     .from(indicatorsTable);
 
-  const [lastFeedRow] = await db
-    .select({ last_fetched: feedsTable.last_fetched })
-    .from(feedsTable)
-    .orderBy(sql`${feedsTable.last_fetched} desc nulls last`)
+  const [{ import_sources }] = await db
+    .select({ import_sources: sql<number>`count(distinct ${indicatorsTable.source_feed})` })
+    .from(indicatorsTable);
+
+  const [lastRow] = await db
+    .select({ updated_at: indicatorsTable.updated_at })
+    .from(indicatorsTable)
+    .orderBy(sql`${indicatorsTable.updated_at} desc nulls last`)
     .limit(1);
 
   res.json({
     total_indicators: Number(total_indicators),
-    total_feeds: Number(total_feeds),
-    active_feeds: Number(active_feeds),
-    last_update: lastFeedRow?.last_fetched?.toISOString() ?? null,
+    total_feeds: Number(import_sources),
+    active_feeds: Number(import_sources),
+    import_sources: Number(import_sources),
+    last_update: lastRow?.updated_at?.toISOString() ?? null,
     indicators_added_today: Number(indicators_added_today),
     unique_countries: Number(unique_countries),
   });

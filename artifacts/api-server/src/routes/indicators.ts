@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { db, indicatorsTable } from "@workspace/db";
-import { eq, ilike, and, sql, count } from "drizzle-orm";
+import { eq, ilike, and, sql, count, inArray } from "drizzle-orm";
 import { ListIndicatorsQueryParams, ImportIndicatorsBody } from "@workspace/api-zod";
 import { normalizeCsvContent } from "../lib/csv-ingestion";
 import { logImport } from "../lib/history";
+import { lookupCountry } from "../lib/geoip";
 import { z } from "zod";
 
 const router = Router();
@@ -116,6 +117,69 @@ router.post("/import-url", async (req, res) => {
     },
   });
   res.json(result);
+});
+
+router.post("/enrich-geo", async (_req, res) => {
+  const BATCH = 5000;
+  let offset = 0;
+  let total = 0;
+
+  while (true) {
+    // Fetch a large batch of IPs without a country
+    const rows = await db
+      .select({ id: indicatorsTable.id, indicator: indicatorsTable.indicator })
+      .from(indicatorsTable)
+      .where(
+        and(
+          eq(indicatorsTable.indicator_type, "ip"),
+          sql`${indicatorsTable.country} is null`
+        )
+      )
+      .limit(BATCH);
+
+    if (rows.length === 0) break;
+
+    // Resolve all countries in memory (fast — no I/O)
+    const byCountry = new Map<string, number[]>();
+    const unresolved: number[] = [];
+    for (const row of rows) {
+      const country = lookupCountry(row.indicator);
+      if (country) {
+        if (!byCountry.has(country)) byCountry.set(country, []);
+        byCountry.get(country)!.push(row.id);
+        total++;
+      } else {
+        // Mark as "XX" to avoid re-scanning unreachable IPs
+        unresolved.push(row.id);
+      }
+    }
+
+    // One UPDATE per country — massively reduces round-trips vs per-row updates
+    for (const [country, ids] of byCountry.entries()) {
+      const CHUNK = 1000;
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        await db
+          .update(indicatorsTable)
+          .set({ country })
+          .where(inArray(indicatorsTable.id, ids.slice(i, i + CHUNK)));
+      }
+    }
+
+    // Mark unresolvable IPs so they're skipped in subsequent runs
+    if (unresolved.length > 0) {
+      const CHUNK = 1000;
+      for (let i = 0; i < unresolved.length; i += CHUNK) {
+        await db
+          .update(indicatorsTable)
+          .set({ country: "XX" })
+          .where(inArray(indicatorsTable.id, unresolved.slice(i, i + CHUNK)));
+      }
+    }
+
+    offset += BATCH;
+  }
+
+  res.json({ enriched: total });
 });
 
 export default router;
