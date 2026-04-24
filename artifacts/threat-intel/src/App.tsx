@@ -5,7 +5,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { MainLayout } from "./components/layout/main-layout";
 
 import Dashboard from "./pages/dashboard";
-import Feeds from "./pages/feeds";
 import Indicators from "./pages/indicators";
 import Import from "./pages/import";
 import Export from "./pages/export";
@@ -19,7 +18,6 @@ function Router() {
     <MainLayout>
       <Switch>
         <Route path="/" component={Dashboard} />
-        <Route path="/feeds" component={Feeds} />
         <Route path="/indicators" component={Indicators} />
         <Route path="/import" component={Import} />
         <Route path="/export" component={Export} />

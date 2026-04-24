@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { Activity, Database, List, Upload, Download, BookOpen, ShieldAlert, Loader2 } from "lucide-react";
+import { Activity, List, Upload, Download, BookOpen, ShieldAlert, Loader2, Globe } from "lucide-react";
 import { useGetStats, getGetStatsQueryKey } from "@workspace/api-client-react";
 
 interface MainLayoutProps {
@@ -16,7 +16,6 @@ export function MainLayout({ children }: MainLayoutProps) {
 
   const navItems = [
     { href: "/", label: "Dashboard", icon: Activity },
-    { href: "/feeds", label: "Feeds", icon: Database },
     { href: "/indicators", label: "Indicators", icon: List },
     { href: "/import", label: "Import", icon: Upload },
     { href: "/export", label: "Export", icon: Download },
@@ -68,8 +67,8 @@ export function MainLayout({ children }: MainLayoutProps) {
                 <span className="font-mono text-primary">{stats.total_indicators.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-xs">
-                <span className="text-muted-foreground">Active Feeds</span>
-                <span className="font-mono text-foreground">{stats.active_feeds} / {stats.total_feeds}</span>
+                <span className="text-muted-foreground">Countries</span>
+                <span className="font-mono text-foreground">{stats.unique_countries}</span>
               </div>
               <div className="flex justify-between text-xs mt-2">
                 <span className="text-muted-foreground">Last Update</span>

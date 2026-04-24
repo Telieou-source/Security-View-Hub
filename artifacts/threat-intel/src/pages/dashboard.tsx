@@ -44,12 +44,12 @@ export default function Dashboard() {
         
         <Card className="bg-card/50 backdrop-blur border-border">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Active Feeds</CardTitle>
+            <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Import Sources</CardTitle>
             <Database className="w-4 h-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-mono font-bold text-foreground">{stats?.active_feeds || 0}</div>
-            <p className="text-xs text-muted-foreground mt-1">Out of {stats?.total_feeds || 0} total feeds</p>
+            <div className="text-3xl font-mono font-bold text-foreground">{stats?.import_sources ?? stats?.active_feeds ?? 0}</div>
+            <p className="text-xs text-muted-foreground mt-1">Distinct threat sources</p>
           </CardContent>
         </Card>
 
