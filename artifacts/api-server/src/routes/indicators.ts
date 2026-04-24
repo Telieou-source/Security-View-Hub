@@ -3,6 +3,7 @@ import { db, indicatorsTable } from "@workspace/db";
 import { eq, ilike, and, sql, count } from "drizzle-orm";
 import { ListIndicatorsQueryParams, ImportIndicatorsBody } from "@workspace/api-zod";
 import { normalizeCsvContent } from "../lib/csv-ingestion";
+import { z } from "zod";
 
 const router = Router();
 
@@ -55,6 +56,43 @@ router.post("/import", async (req, res) => {
   }
   const { feed_name, csv_content, feed_type } = parsed.data;
   const result = await normalizeCsvContent(csv_content, feed_name, feed_type);
+  res.json(result);
+});
+
+const ImportUrlBody = z.object({
+  url: z.string().url(),
+  feed_name: z.string().min(1),
+  feed_type: z.string().min(1),
+});
+
+router.post("/import-url", async (req, res) => {
+  const parsed = ImportUrlBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid body", details: parsed.error.issues });
+    return;
+  }
+  const { url, feed_name, feed_type } = parsed.data;
+
+  let csvContent: string;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60_000);
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: { "User-Agent": "ThreatIntelAggregator/1.0" },
+    });
+    clearTimeout(timeout);
+    if (!response.ok) {
+      res.status(502).json({ error: `Remote fetch failed: ${response.status} ${response.statusText}` });
+      return;
+    }
+    csvContent = await response.text();
+  } catch (err: any) {
+    res.status(502).json({ error: `Could not fetch URL: ${err?.message ?? String(err)}` });
+    return;
+  }
+
+  const result = await normalizeCsvContent(csvContent, feed_name, feed_type);
   res.json(result);
 });
 
