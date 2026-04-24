@@ -2,6 +2,7 @@ import { useGetStats, useGetStatsByType, useGetStatsByCountry, useGetStatsByFeed
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Shield, Activity, Globe, Database, Loader2 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import WorldThreatMap from "@/components/WorldThreatMap";
 
 export default function Dashboard() {
   const { data: stats, isLoading: statsLoading } = useGetStats({ query: { queryKey: getGetStatsQueryKey() } });
@@ -79,13 +80,27 @@ export default function Dashboard() {
         </Card>
       </div>
 
+      {/* World Threat Map — full width */}
+      <Card className="bg-card/50 backdrop-blur border-border">
+        <CardHeader>
+          <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+            <Globe className="w-4 h-4 text-primary" />
+            Global Threat Distribution
+            {countryLoading && <Loader2 className="w-3 h-3 animate-spin ml-1 text-muted-foreground" />}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="h-[380px] p-2 pt-0">
+          <WorldThreatMap data={byCountry ?? []} />
+        </CardContent>
+      </Card>
+
       {/* Charts */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card className="bg-card/50 backdrop-blur border-border col-span-2 lg:col-span-1">
           <CardHeader>
             <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Indicators by Type</CardTitle>
           </CardHeader>
-          <CardContent className="h-[300px]">
+          <CardContent className="h-[260px]">
             {typeLoading ? (
               <div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
             ) : (
@@ -110,7 +125,7 @@ export default function Dashboard() {
           <CardHeader>
             <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Top Feed Sources</CardTitle>
           </CardHeader>
-          <CardContent className="h-[300px]">
+          <CardContent className="h-[260px]">
             {feedLoading ? (
               <div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
             ) : (
@@ -131,7 +146,7 @@ export default function Dashboard() {
           <CardHeader>
             <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Top Countries</CardTitle>
           </CardHeader>
-          <CardContent className="h-[300px]">
+          <CardContent className="h-[260px]">
             {countryLoading ? (
               <div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
             ) : (
