@@ -1,0 +1,124 @@
+Build an application called “Global Threat‑Intel CSV Aggregator” with the following capabilities:
+
+Threat‑Intel Feed Ingestion  
+The application must ingest threat‑intel data from multiple open‑source global CSV feeds.
+Supported feed types include:
+
+IP reputation lists
+
+Malware indicators
+
+Botnet C2 lists
+
+SSL abuse lists
+
+Brute‑force attacker IPs
+
+Any other CSV‑based threat‑intel source
+
+The application must allow the user to add, remove, or edit feed URLs.
+
+CSV Normalization Engine  
+The application must normalize all incoming CSV files into a unified schema with fields such as:
+
+indicator
+
+indicator_type
+
+source_feed
+
+first_seen
+
+last_seen
+
+confidence
+
+country
+
+description
+
+The schema must be applied consistently regardless of the original CSV format.
+
+Local Storage Layer  
+The application must store normalized threat‑intel data locally using a simple storage mechanism.
+Storage must support:
+
+full dataset replacement
+
+incremental updates
+
+deduplication
+
+timestamping of each update cycle
+
+Offline‑Friendly Operation  
+The application must support an offline mode where previously downloaded CSV files can be manually imported.
+Offline mode must allow:
+
+importing CSV files from a folder
+
+validating schema
+
+normalizing and storing the data
+
+updating the local dataset without internet access
+
+User Interface  
+The application must include a simple UI that provides:
+
+a list of all configured feeds
+
+a button to fetch and update all feeds
+
+a table view of normalized threat‑intel indicators
+
+filters for indicator type, country, and feed source
+
+a status panel showing last update time and number of indicators
+
+Export Capabilities  
+The application must allow exporting the normalized dataset as:
+
+a single CSV file
+
+a JSON file
+
+a folder containing per‑feed CSVs
+
+Security Requirements  
+The application must:
+
+never execute downloaded content
+
+treat all data as untrusted
+
+sanitize all fields
+
+validate CSV structure before processing
+
+Air‑Gap Transfer Support  
+The application must generate a self‑contained output folder that can be transferred into an air‑gapped environment.
+This folder must include:
+
+the normalized dataset
+
+a manifest describing feed sources
+
+timestamps
+
+a checksum file
+
+Documentation  
+The application must include built‑in documentation explaining:
+
+how to add feeds
+
+how to run updates
+
+how to use offline mode
+
+how to export data
+
+how to transfer data into an air‑gapped system
+
+Build the full application end‑to‑end based on this specification.

@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Global Threat-Intel CSV Aggregator"
+version = "1.0.0"
+id = "artifacts/threat-intel"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19250
+
+[services.development]
+run = "pnpm --filter @workspace/threat-intel run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/threat-intel", "run", "build" ]
+publicDir = "artifacts/threat-intel/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19250"
+BASE_PATH = "/"

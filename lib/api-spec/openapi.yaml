@@ -1,22 +1,29 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Global Threat-Intel CSV Aggregator API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: feeds
+    description: Feed management
+  - name: indicators
+    description: Threat indicator operations
+  - name: stats
+    description: Dashboard statistics
+  - name: exports
+    description: Data export operations
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +31,308 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /feeds:
+    get:
+      operationId: listFeeds
+      tags: [feeds]
+      summary: List all configured feeds
+      responses:
+        "200":
+          description: List of feeds
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Feed"
+    post:
+      operationId: createFeed
+      tags: [feeds]
+      summary: Add a new feed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFeedBody"
+      responses:
+        "201":
+          description: Feed created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feed"
+
+  /feeds/{id}:
+    get:
+      operationId: getFeed
+      tags: [feeds]
+      summary: Get a feed by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Feed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feed"
+    put:
+      operationId: updateFeed
+      tags: [feeds]
+      summary: Update a feed
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateFeedBody"
+      responses:
+        "200":
+          description: Updated feed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feed"
+    delete:
+      operationId: deleteFeed
+      tags: [feeds]
+      summary: Delete a feed
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /feeds/{id}/fetch:
+    post:
+      operationId: fetchFeed
+      tags: [feeds]
+      summary: Fetch and ingest a specific feed
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Fetch result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FetchResult"
+
+  /feeds/fetch-all:
+    post:
+      operationId: fetchAllFeeds
+      tags: [feeds]
+      summary: Fetch and ingest all feeds
+      responses:
+        "200":
+          description: Fetch results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FetchAllResult"
+
+  /indicators:
+    get:
+      operationId: listIndicators
+      tags: [indicators]
+      summary: List threat indicators with filters
+      parameters:
+        - name: indicator_type
+          in: query
+          schema:
+            type: string
+        - name: source_feed
+          in: query
+          schema:
+            type: string
+        - name: country
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Paginated indicators
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IndicatorListResponse"
+
+  /indicators/import:
+    post:
+      operationId: importIndicators
+      tags: [indicators]
+      summary: Import indicators from offline CSV
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportIndicatorsBody"
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportResult"
+
+  /stats:
+    get:
+      operationId: getStats
+      tags: [stats]
+      summary: Get dashboard statistics
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /stats/by-type:
+    get:
+      operationId: getStatsByType
+      tags: [stats]
+      summary: Get indicator counts grouped by type
+      responses:
+        "200":
+          description: Counts by type
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CountByField"
+
+  /stats/by-country:
+    get:
+      operationId: getStatsByCountry
+      tags: [stats]
+      summary: Get indicator counts grouped by country
+      responses:
+        "200":
+          description: Counts by country
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CountByField"
+
+  /stats/by-feed:
+    get:
+      operationId: getStatsByFeed
+      tags: [stats]
+      summary: Get indicator counts grouped by feed
+      responses:
+        "200":
+          description: Counts by feed
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CountByField"
+
+  /export/csv:
+    get:
+      operationId: exportCsv
+      tags: [exports]
+      summary: Export all indicators as CSV
+      parameters:
+        - name: indicator_type
+          in: query
+          schema:
+            type: string
+        - name: source_feed
+          in: query
+          schema:
+            type: string
+        - name: country
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+
+  /export/json:
+    get:
+      operationId: exportJson
+      tags: [exports]
+      summary: Export all indicators as JSON
+      parameters:
+        - name: indicator_type
+          in: query
+          schema:
+            type: string
+        - name: source_feed
+          in: query
+          schema:
+            type: string
+        - name: country
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: JSON export
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JsonExport"
+
+  /export/airgap:
+    post:
+      operationId: exportAirgap
+      tags: [exports]
+      summary: Generate air-gap transfer package metadata
+      responses:
+        "200":
+          description: Air-gap export manifest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AirgapExport"
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +340,234 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    Feed:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        url:
+          type: string
+        feed_type:
+          type: string
+          enum: [ip_reputation, malware, botnet_c2, ssl_abuse, brute_force, other]
+        enabled:
+          type: boolean
+        last_fetched:
+          type: string
+          nullable: true
+        indicator_count:
+          type: integer
+        created_at:
+          type: string
+      required: [id, name, url, feed_type, enabled, indicator_count, created_at]
+
+    CreateFeedBody:
+      type: object
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+        feed_type:
+          type: string
+          enum: [ip_reputation, malware, botnet_c2, ssl_abuse, brute_force, other]
+        enabled:
+          type: boolean
+      required: [name, url, feed_type]
+
+    UpdateFeedBody:
+      type: object
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+        feed_type:
+          type: string
+          enum: [ip_reputation, malware, botnet_c2, ssl_abuse, brute_force, other]
+        enabled:
+          type: boolean
+
+    FetchResult:
+      type: object
+      properties:
+        feed_id:
+          type: integer
+        feed_name:
+          type: string
+        success:
+          type: boolean
+        indicators_added:
+          type: integer
+        indicators_updated:
+          type: integer
+        indicators_skipped:
+          type: integer
+        error:
+          type: string
+          nullable: true
+      required: [feed_id, feed_name, success, indicators_added, indicators_updated, indicators_skipped]
+
+    FetchAllResult:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/FetchResult"
+        total_added:
+          type: integer
+        total_updated:
+          type: integer
+        completed_at:
+          type: string
+      required: [results, total_added, total_updated, completed_at]
+
+    Indicator:
+      type: object
+      properties:
+        id:
+          type: integer
+        indicator:
+          type: string
+        indicator_type:
+          type: string
+        source_feed:
+          type: string
+        first_seen:
+          type: string
+          nullable: true
+        last_seen:
+          type: string
+          nullable: true
+        confidence:
+          type: integer
+          nullable: true
+        country:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+        updated_at:
+          type: string
+      required: [id, indicator, indicator_type, source_feed, created_at, updated_at]
+
+    IndicatorListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Indicator"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        total_pages:
+          type: integer
+      required: [data, total, page, limit, total_pages]
+
+    ImportIndicatorsBody:
+      type: object
+      properties:
+        feed_name:
+          type: string
+        csv_content:
+          type: string
+        feed_type:
+          type: string
+          enum: [ip_reputation, malware, botnet_c2, ssl_abuse, brute_force, other]
+      required: [feed_name, csv_content, feed_type]
+
+    ImportResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        indicators_added:
+          type: integer
+        indicators_updated:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+      required: [success, indicators_added, indicators_updated, errors]
+
+    DashboardStats:
+      type: object
+      properties:
+        total_indicators:
+          type: integer
+        total_feeds:
+          type: integer
+        active_feeds:
+          type: integer
+        last_update:
+          type: string
+          nullable: true
+        indicators_added_today:
+          type: integer
+        unique_countries:
+          type: integer
+      required: [total_indicators, total_feeds, active_feeds, indicators_added_today, unique_countries]
+
+    CountByField:
+      type: object
+      properties:
+        label:
+          type: string
+        count:
+          type: integer
+      required: [label, count]
+
+    JsonExport:
+      type: object
+      properties:
+        exported_at:
+          type: string
+        total:
+          type: integer
+        indicators:
+          type: array
+          items:
+            $ref: "#/components/schemas/Indicator"
+      required: [exported_at, total, indicators]
+
+    AirgapExport:
+      type: object
+      properties:
+        manifest:
+          type: object
+          properties:
+            generated_at:
+              type: string
+            total_indicators:
+              type: integer
+            feeds:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  count:
+                    type: integer
+                required: [name, count]
+          required: [generated_at, total_indicators, feeds]
+        checksum:
+          type: string
+        csv_data:
+          type: string
+        json_data:
+          type: string
+      required: [manifest, checksum, csv_data, json_data]
