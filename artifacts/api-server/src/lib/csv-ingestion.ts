@@ -1,6 +1,7 @@
 import { db, feedsTable, indicatorsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logger } from "./logger";
+import { lookupCountry } from "./geoip";
 
 export type FeedRow = typeof feedsTable.$inferSelect;
 
@@ -201,6 +202,14 @@ export function parseCsvToIndicators(
       const rawType = fieldMap.indicator_type !== undefined ? sanitizeField(cols[fieldMap.indicator_type]) : "";
       const indicator_type = rawType || detectIndicatorType(rawIndicator, feedType);
 
+      const rawCountry = fieldMap.country !== undefined ? sanitizeField(cols[fieldMap.country]) || null : null;
+
+      // Enrich IPs with geoip when no country is available in the feed data
+      let resolvedCountry = rawCountry;
+      if (!resolvedCountry && indicator_type === "ip") {
+        resolvedCountry = lookupCountry(rawIndicator);
+      }
+
       const indicator: NormalizedIndicator = {
         indicator: rawIndicator,
         indicator_type,
@@ -208,7 +217,7 @@ export function parseCsvToIndicators(
         first_seen: fieldMap.first_seen !== undefined ? sanitizeField(cols[fieldMap.first_seen]) || null : null,
         last_seen: fieldMap.last_seen !== undefined ? sanitizeField(cols[fieldMap.last_seen]) || null : null,
         confidence: fieldMap.confidence !== undefined ? parseInt(cols[fieldMap.confidence] ?? "", 10) || null : null,
-        country: fieldMap.country !== undefined ? sanitizeField(cols[fieldMap.country]) || null : null,
+        country: resolvedCountry,
         description: fieldMap.description !== undefined ? sanitizeField(cols[fieldMap.description]) || null : null,
       };
 
@@ -284,13 +293,14 @@ export async function normalizeCsvContent(
   csvContent: string,
   feedName: string,
   feedType: string
-): Promise<{ success: boolean; indicators_added: number; indicators_updated: number; errors: string[] }> {
+): Promise<{ success: boolean; indicators_added: number; indicators_updated: number; indicators_skipped: number; errors: string[] }> {
   const { indicators, errors } = parseCsvToIndicators(csvContent, feedName, feedType);
-  const { added, updated } = await upsertIndicators(indicators);
+  const { added, updated, skipped } = await upsertIndicators(indicators);
   return {
     success: errors.length === 0 || indicators.length > 0,
     indicators_added: added,
     indicators_updated: updated,
+    indicators_skipped: skipped,
     errors,
   };
 }

@@ -6,11 +6,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { FileText, FileJson, Package, Loader2, DownloadCloud } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { ExportHistory } from "@/components/HistoryLog";
 
 export default function Export() {
   const { toast } = useToast();
   
   const [typeFilter, setTypeFilter] = useState("all");
+  const [historyKey, setHistoryKey] = useState(0);
   
   const exportCsv = useExportCsv();
   const exportJson = useExportJson();
@@ -38,6 +40,7 @@ export default function Export() {
       const data = await exportCsv(params);
       handleDownloadBlob(data as any, `threat-intel-export-${new Date().toISOString().split('T')[0]}.csv`, "text/csv");
       toast({ title: "CSV Export Started" });
+      setHistoryKey(k => k + 1);
     } catch (e: any) {
       toast({ title: "Export Failed", description: e.message, variant: "destructive" });
     }
@@ -48,6 +51,7 @@ export default function Export() {
       const { data } = await exportJson(params);
       handleDownloadBlob(data as any, `threat-intel-export-${new Date().toISOString().split('T')[0]}.json`, "application/json");
       toast({ title: "JSON Export Started" });
+      setHistoryKey(k => k + 1);
     } catch (e: any) {
       toast({ title: "Export Failed", description: e.message, variant: "destructive" });
     }
@@ -59,6 +63,7 @@ export default function Export() {
         setAirgapResult(data);
         handleDownloadBlob(data, `airgap-package-${data.manifest.generated_at}.json`, "application/json");
         toast({ title: "Air-gap Package Generated", description: "Download started." });
+        setHistoryKey(k => k + 1);
       },
       onError: (e: any) => toast({ title: "Export Failed", description: e.message, variant: "destructive" })
     });
@@ -144,6 +149,8 @@ export default function Export() {
           </CardFooter>
         </Card>
       </div>
+
+      <ExportHistory refreshKey={historyKey} />
 
       {airgapResult && (
         <Card className="border-border bg-card mt-8 animate-in fade-in slide-in-from-bottom-4">

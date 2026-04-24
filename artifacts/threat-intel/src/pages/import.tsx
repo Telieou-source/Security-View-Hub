@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useImportIndicators, ImportIndicatorsBodyFeedType } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Loader2, UploadCloud, CheckCircle2, AlertTriangle, Link2, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { ImportHistory, DuplicateWarning } from "@/components/HistoryLog";
 
 const BASE_URL = import.meta.env.BASE_URL ?? "/";
 
@@ -25,20 +26,23 @@ async function importFromUrl(payload: { url: string; feed_name: string; feed_typ
 }
 
 const FEED_TYPES = Object.values(ImportIndicatorsBodyFeedType);
-
 type Mode = "paste" | "url";
 
 export default function Import() {
   const { toast } = useToast();
   const importMutation = useImportIndicators();
 
-  const [mode, setMode] = useState<Mode>("paste");
+  const [mode, setMode] = useState<Mode>("url");
   const [feedName, setFeedName] = useState("");
   const [feedType, setFeedType] = useState<ImportIndicatorsBodyFeedType>(ImportIndicatorsBodyFeedType.ip_reputation);
   const [csvContent, setCsvContent] = useState("");
   const [remoteUrl, setRemoteUrl] = useState("");
   const [urlPending, setUrlPending] = useState(false);
   const [result, setResult] = useState<any>(null);
+  const [isDuplicate, setIsDuplicate] = useState(false);
+  const [historyKey, setHistoryKey] = useState(0);
+
+  const watchUrl = mode === "url" ? remoteUrl : undefined;
 
   const handlePasteImport = () => {
     if (!feedName || !csvContent) {
@@ -48,6 +52,7 @@ export default function Import() {
     importMutation.mutate({ data: { feed_name: feedName, feed_type: feedType, csv_content: csvContent } }, {
       onSuccess: (data) => {
         setResult(data);
+        setHistoryKey(k => k + 1);
         if (data.success) {
           toast({ title: "Import Successful" });
           setCsvContent("");
@@ -71,9 +76,12 @@ export default function Import() {
     try {
       const data = await importFromUrl({ url: remoteUrl, feed_name: feedName, feed_type: feedType });
       setResult(data);
+      setHistoryKey(k => k + 1);
+      setIsDuplicate(false);
       if (data.success) {
         toast({ title: "Import Successful" });
         setRemoteUrl("");
+        setFeedName("");
       } else {
         toast({ title: "Import Completed with Errors", variant: "destructive" });
       }
@@ -97,7 +105,7 @@ export default function Import() {
         <Button
           variant={mode === "url" ? "default" : "outline"}
           size="sm"
-          onClick={() => { setMode("url"); setResult(null); }}
+          onClick={() => { setMode("url"); setResult(null); setIsDuplicate(false); }}
           className="flex items-center gap-2"
         >
           <Link2 className="w-4 h-4" />
@@ -106,7 +114,7 @@ export default function Import() {
         <Button
           variant={mode === "paste" ? "default" : "outline"}
           size="sm"
-          onClick={() => { setMode("paste"); setResult(null); }}
+          onClick={() => { setMode("paste"); setResult(null); setIsDuplicate(false); }}
           className="flex items-center gap-2"
         >
           <FileText className="w-4 h-4" />
@@ -114,12 +122,16 @@ export default function Import() {
         </Button>
       </div>
 
+      {isDuplicate && mode === "url" && remoteUrl && (
+        <DuplicateWarning url={remoteUrl} />
+      )}
+
       <Card className="border-border bg-card">
         <CardHeader>
           <CardTitle>{mode === "url" ? "Import from URL" : "Paste CSV Content"}</CardTitle>
           <CardDescription>
             {mode === "url"
-              ? "The server will fetch the file directly — no size limits, no paste required."
+              ? "The server fetches the file directly — no size limits, no paste required."
               : "Paste raw CSV or plain-text data. Supports comma/tab-delimited and headerless IP lists."}
           </CardDescription>
         </CardHeader>
@@ -160,7 +172,7 @@ export default function Import() {
                 className="font-mono text-sm"
               />
               <p className="text-xs text-muted-foreground">
-                The server fetches this URL directly — large files and plain-text IP lists are fully supported.
+                Large files and plain-text IP lists are fully supported. The server fetches the URL — nothing is uploaded.
               </p>
             </div>
           ) : (
@@ -204,15 +216,15 @@ export default function Import() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
               <div className="p-3 bg-muted rounded-md">
                 <div className="text-sm text-muted-foreground uppercase tracking-wider mb-1">Added</div>
-                <div className="text-2xl font-mono text-foreground">{result.indicators_added}</div>
+                <div className="text-2xl font-mono text-foreground">{result.indicators_added?.toLocaleString()}</div>
               </div>
               <div className="p-3 bg-muted rounded-md">
                 <div className="text-sm text-muted-foreground uppercase tracking-wider mb-1">Updated</div>
-                <div className="text-2xl font-mono text-foreground">{result.indicators_updated}</div>
+                <div className="text-2xl font-mono text-foreground">{result.indicators_updated?.toLocaleString()}</div>
               </div>
               <div className="p-3 bg-muted rounded-md">
                 <div className="text-sm text-muted-foreground uppercase tracking-wider mb-1">Skipped</div>
-                <div className="text-2xl font-mono text-foreground">{result.indicators_skipped ?? 0}</div>
+                <div className="text-2xl font-mono text-foreground">{(result.indicators_skipped ?? 0).toLocaleString()}</div>
               </div>
               <div className="p-3 bg-muted rounded-md">
                 <div className="text-sm text-muted-foreground uppercase tracking-wider mb-1">Errors</div>
@@ -233,6 +245,12 @@ export default function Import() {
           </CardContent>
         </Card>
       )}
+
+      <ImportHistory
+        watchUrl={watchUrl}
+        onDuplicateWarning={setIsDuplicate}
+        refreshKey={historyKey}
+      />
     </div>
   );
 }

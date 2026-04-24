@@ -3,6 +3,7 @@ import { db, indicatorsTable, feedsTable } from "@workspace/db";
 import { eq, and, count } from "drizzle-orm";
 import { createHash } from "crypto";
 import { ExportCsvQueryParams, ExportJsonQueryParams } from "@workspace/api-zod";
+import { logExport } from "../lib/history";
 
 const router = Router();
 
@@ -42,6 +43,7 @@ router.get("/csv", async (req, res) => {
   }
   const where = buildConditions(parsed.data);
   const rows = await db.select().from(indicatorsTable).where(where).orderBy(indicatorsTable.created_at);
+  await logExport({ format: "csv", indicator_count: rows.length, filters: parsed.data as Record<string, string | undefined> });
   const csv = rowsToCsv(rows);
   res.setHeader("Content-Type", "text/csv");
   res.setHeader("Content-Disposition", "attachment; filename=threat-intel-export.csv");
@@ -56,6 +58,7 @@ router.get("/json", async (req, res) => {
   }
   const where = buildConditions(parsed.data);
   const rows = await db.select().from(indicatorsTable).where(where).orderBy(indicatorsTable.created_at);
+  await logExport({ format: "json", indicator_count: rows.length, filters: parsed.data as Record<string, string | undefined> });
   res.json({
     exported_at: new Date().toISOString(),
     total: rows.length,
@@ -82,6 +85,8 @@ router.post("/airgap", async (req, res) => {
     total_indicators: rows.length,
     feeds: feedCounts,
   };
+
+  await logExport({ format: "airgap", indicator_count: rows.length });
 
   res.json({
     manifest,

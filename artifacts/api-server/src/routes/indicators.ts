@@ -3,6 +3,7 @@ import { db, indicatorsTable } from "@workspace/db";
 import { eq, ilike, and, sql, count } from "drizzle-orm";
 import { ListIndicatorsQueryParams, ImportIndicatorsBody } from "@workspace/api-zod";
 import { normalizeCsvContent } from "../lib/csv-ingestion";
+import { logImport } from "../lib/history";
 import { z } from "zod";
 
 const router = Router();
@@ -56,6 +57,16 @@ router.post("/import", async (req, res) => {
   }
   const { feed_name, csv_content, feed_type } = parsed.data;
   const result = await normalizeCsvContent(csv_content, feed_name, feed_type);
+  await logImport({
+    source_name: feed_name,
+    feed_type,
+    result: {
+      indicators_added: result.indicators_added,
+      indicators_updated: result.indicators_updated,
+      indicators_skipped: result.indicators_skipped,
+      errors: result.errors,
+    },
+  });
   res.json(result);
 });
 
@@ -93,6 +104,17 @@ router.post("/import-url", async (req, res) => {
   }
 
   const result = await normalizeCsvContent(csvContent, feed_name, feed_type);
+  await logImport({
+    source_name: feed_name,
+    source_url: url,
+    feed_type,
+    result: {
+      indicators_added: result.indicators_added,
+      indicators_updated: result.indicators_updated,
+      indicators_skipped: result.indicators_skipped,
+      errors: result.errors,
+    },
+  });
   res.json(result);
 });
 
