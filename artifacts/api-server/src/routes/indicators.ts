@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, indicatorsTable, importHistoryTable } from "@workspace/db";
-import { eq, ilike, and, sql, count, inArray } from "drizzle-orm";
+import { eq, ilike, and, or, sql, count, inArray } from "drizzle-orm";
 import { ListIndicatorsQueryParams, ImportIndicatorsBody } from "@workspace/api-zod";
 import { normalizeCsvContent } from "../lib/csv-ingestion";
 import { logImport } from "../lib/history";
@@ -21,7 +21,12 @@ router.get("/", async (req, res) => {
   if (indicator_type) conditions.push(eq(indicatorsTable.indicator_type, indicator_type));
   if (source_feed) conditions.push(eq(indicatorsTable.source_feed, source_feed));
   if (country) conditions.push(eq(indicatorsTable.country, country));
-  if (search) conditions.push(ilike(indicatorsTable.indicator, `%${search}%`));
+  if (search) conditions.push(
+    or(
+      ilike(indicatorsTable.indicator, `%${search}%`),
+      ilike(indicatorsTable.source_feed, `%${search}%`)
+    )!
+  );
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   const pageNum = page ?? 1;
