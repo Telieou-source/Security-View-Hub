@@ -128,6 +128,72 @@ function looksLikeIndicatorValue(value: string): boolean {
   return false;
 }
 
+/**
+ * For headerless plain-text threat feed lines, extract 0-N indicators.
+ *
+ * Handles the many formats found in the wild:
+ *   "192.168.1.1"                     → 1 IP indicator
+ *   "192.168.1.1 # just a comment"    → 1 IP indicator, description = "just a comment"
+ *   "192.168.1.1 # mail.evil.com"     → 2 indicators: IP + domain
+ *   "192.168.1.1 mail.evil.com"       → 2 indicators: IP + domain (space-separated)
+ *   "0.0.0.0 ads.domain.com"          → 2 indicators: null-route IP + domain
+ *   "bad.domain.com # 1.2.3.4"        → 2 indicators: domain + IP
+ */
+function extractIndicatorsFromLine(
+  rawLine: string,
+  sourceFeed: string,
+  feedType: string
+): NormalizedIndicator[] {
+  const results: NormalizedIndicator[] = [];
+
+  // Split at the first # — everything before is data, after is comment/description
+  const hashIdx = rawLine.indexOf("#");
+  const dataPart = (hashIdx >= 0 ? rawLine.substring(0, hashIdx) : rawLine).trim();
+  const commentPart = (hashIdx >= 0 ? rawLine.substring(hashIdx + 1) : "").trim();
+
+  // Tokenize data portion by whitespace
+  const dataTokens = dataPart.split(/\s+/).filter(Boolean);
+
+  // Find any indicator-looking tokens in the comment portion
+  const commentIndicatorTokens = commentPart
+    .split(/\s+/)
+    .filter(t => looksLikeIndicatorValue(t));
+
+  // If the comment has no embedded indicators, use it as a plain-text description
+  const pureCommentText =
+    commentPart && commentIndicatorTokens.length === 0 ? commentPart : null;
+
+  // Emit an indicator for every valid token — from both data and comment parts
+  const allTokens: Array<{ token: string; isFromComment: boolean }> = [
+    ...dataTokens.map(t => ({ token: t, isFromComment: false })),
+    ...commentIndicatorTokens.map(t => ({ token: t, isFromComment: true })),
+  ];
+
+  for (const { token, isFromComment } of allTokens) {
+    if (!looksLikeIndicatorValue(token)) continue;
+
+    const indicator_type = detectIndicatorType(token, feedType);
+    let country: string | null = null;
+    if (indicator_type === "ip") {
+      country = lookupCountry(token);
+    }
+
+    results.push({
+      indicator: token,
+      indicator_type,
+      source_feed: sourceFeed,
+      // Only attach the plain comment text to the primary (non-comment) tokens
+      description: !isFromComment ? pureCommentText : null,
+      country,
+      first_seen: null,
+      last_seen: null,
+      confidence: null,
+    });
+  }
+
+  return results;
+}
+
 export function parseCsvToIndicators(
   csvContent: string,
   sourceFeed: string,
@@ -166,10 +232,12 @@ export function parseCsvToIndicators(
 
   const firstLineCols = splitLine(sampleLine);
   const firstColValue = firstLineCols[0]?.trim() ?? "";
+  // For multi-token lines like "1.2.3.4 # domain.com", check only the first whitespace token
+  const firstToken = firstColValue.split(/\s+/)[0] ?? "";
 
   // If the first data line looks like an actual indicator value (IP, hash, domain, URL),
   // this is a headerless plain-text list — treat ALL data lines as indicators
-  const isHeaderless = looksLikeIndicatorValue(firstColValue);
+  const isHeaderless = looksLikeIndicatorValue(firstToken);
 
   let fieldMap: Record<string, number>;
   let dataStartIdx: number;
@@ -192,36 +260,46 @@ export function parseCsvToIndicators(
   for (let i = dataStartIdx; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trim();
-    if (trimmed === "" || trimmed.startsWith("#") || trimmed.startsWith(";") || trimmed.startsWith("//")) continue;
+    if (trimmed === "" || trimmed.startsWith(";") || trimmed.startsWith("//")) continue;
 
     try {
-      const cols = splitLine(line);
-      const rawIndicator = sanitizeField(cols[fieldMap.indicator]);
-      if (!rawIndicator) continue;
+      if (isHeaderless) {
+        // Skip pure comment lines in headerless mode
+        if (trimmed.startsWith("#")) continue;
 
-      const rawType = fieldMap.indicator_type !== undefined ? sanitizeField(cols[fieldMap.indicator_type]) : "";
-      const indicator_type = rawType || detectIndicatorType(rawIndicator, feedType);
+        // Smart multi-token parser: handles "IP # domain", "IP domain", hosts-file format, etc.
+        const extracted = extractIndicatorsFromLine(trimmed, sourceFeed, feedType);
+        indicators.push(...extracted);
+      } else {
+        // Standard CSV path — header-mapped columns
+        const cols = splitLine(line);
+        const rawIndicator = sanitizeField(cols[fieldMap.indicator]);
+        if (!rawIndicator) continue;
 
-      const rawCountry = fieldMap.country !== undefined ? sanitizeField(cols[fieldMap.country]) || null : null;
+        const rawType = fieldMap.indicator_type !== undefined ? sanitizeField(cols[fieldMap.indicator_type]) : "";
+        const indicator_type = rawType || detectIndicatorType(rawIndicator, feedType);
 
-      // Enrich IPs with geoip when no country is available in the feed data
-      let resolvedCountry = rawCountry;
-      if (!resolvedCountry && indicator_type === "ip") {
-        resolvedCountry = lookupCountry(rawIndicator);
+        const rawCountry = fieldMap.country !== undefined ? sanitizeField(cols[fieldMap.country]) || null : null;
+
+        // Enrich IPs with geoip when no country is available in the feed data
+        let resolvedCountry = rawCountry;
+        if (!resolvedCountry && indicator_type === "ip") {
+          resolvedCountry = lookupCountry(rawIndicator);
+        }
+
+        const indicator: NormalizedIndicator = {
+          indicator: rawIndicator,
+          indicator_type,
+          source_feed: sourceFeed,
+          first_seen: fieldMap.first_seen !== undefined ? sanitizeField(cols[fieldMap.first_seen]) || null : null,
+          last_seen: fieldMap.last_seen !== undefined ? sanitizeField(cols[fieldMap.last_seen]) || null : null,
+          confidence: fieldMap.confidence !== undefined ? parseInt(cols[fieldMap.confidence] ?? "", 10) || null : null,
+          country: resolvedCountry,
+          description: fieldMap.description !== undefined ? sanitizeField(cols[fieldMap.description]) || null : null,
+        };
+
+        indicators.push(indicator);
       }
-
-      const indicator: NormalizedIndicator = {
-        indicator: rawIndicator,
-        indicator_type,
-        source_feed: sourceFeed,
-        first_seen: fieldMap.first_seen !== undefined ? sanitizeField(cols[fieldMap.first_seen]) || null : null,
-        last_seen: fieldMap.last_seen !== undefined ? sanitizeField(cols[fieldMap.last_seen]) || null : null,
-        confidence: fieldMap.confidence !== undefined ? parseInt(cols[fieldMap.confidence] ?? "", 10) || null : null,
-        country: resolvedCountry,
-        description: fieldMap.description !== undefined ? sanitizeField(cols[fieldMap.description]) || null : null,
-      };
-
-      indicators.push(indicator);
     } catch (err) {
       errors.push(`Row ${i + 1}: ${String(err)}`);
     }
