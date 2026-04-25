@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, indicatorsTable } from "@workspace/db";
+import { db, indicatorsTable, importHistoryTable } from "@workspace/db";
 import { eq, ilike, and, sql, count, inArray } from "drizzle-orm";
 import { ListIndicatorsQueryParams, ImportIndicatorsBody } from "@workspace/api-zod";
 import { normalizeCsvContent } from "../lib/csv-ingestion";
@@ -117,6 +117,17 @@ router.post("/import-url", async (req, res) => {
     },
   });
   res.json(result);
+});
+
+router.delete("/purge", async (_req, res) => {
+  const [{ count: deletedIndicators }] = await db
+    .delete(indicatorsTable)
+    .returning({ count: indicatorsTable.id })
+    .then(rows => [{ count: rows.length }]);
+
+  await db.delete(importHistoryTable);
+
+  res.json({ deleted_indicators: deletedIndicators });
 });
 
 router.post("/enrich-geo", async (_req, res) => {
