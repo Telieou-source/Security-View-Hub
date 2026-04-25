@@ -105,20 +105,19 @@ export default function Indicators() {
                 <TableHead>Type</TableHead>
                 <TableHead>Source</TableHead>
                 <TableHead>Country</TableHead>
-                <TableHead className="text-right">Confidence</TableHead>
                 <TableHead>Last Seen</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-12">
+                  <TableCell colSpan={5} className="text-center py-12">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground" />
                   </TableCell>
                 </TableRow>
               ) : !data || data.data.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
                     No indicators found matching filters.
                   </TableCell>
                 </TableRow>
@@ -135,15 +134,10 @@ export default function Indicators() {
                         <span className="font-mono text-xs px-2 py-1 rounded bg-muted text-muted-foreground">{ind.country}</span>
                       ) : <span className="text-muted-foreground/50">-</span>}
                     </TableCell>
-                    <TableCell className="text-right">
-                      {ind.confidence ? (
-                        <span className={`font-mono text-sm ${ind.confidence > 80 ? 'text-destructive' : ind.confidence > 50 ? 'text-yellow-500' : 'text-muted-foreground'}`}>
-                          {ind.confidence}%
-                        </span>
-                      ) : <span className="text-muted-foreground/50">-</span>}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {ind.last_seen ? new Date(ind.last_seen).toLocaleDateString() : '-'}
+                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                      {ind.created_at
+                        ? new Date(ind.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+                        : "-"}
                     </TableCell>
                   </TableRow>
                 ))
