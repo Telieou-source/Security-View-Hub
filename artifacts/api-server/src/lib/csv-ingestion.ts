@@ -91,13 +91,28 @@ function detectFieldMapping(headers: string[]): Record<string, number> {
   return map;
 }
 
+/**
+ * Null-route / loopback IPs used in hosts-file format as redirect targets.
+ * These are never real threat indicators — the associated domain is the threat.
+ */
+const NULL_ROUTE_IPS = new Set(["0.0.0.0", "127.0.0.1", "::1", "::", "255.255.255.255"]);
+
+function isNullRouteIp(value: string): boolean {
+  return NULL_ROUTE_IPS.has(value.trim());
+}
+
 function detectIndicatorType(value: string, feed_type: string): string {
+  // IPv4 / CIDR — must be tested before domain regex
   if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(\/\d+)?$/.test(value)) return "ip";
+  // Hashes
   if (/^[0-9a-f]{32}$/i.test(value)) return "md5";
   if (/^[0-9a-f]{40}$/i.test(value)) return "sha1";
   if (/^[0-9a-f]{64}$/i.test(value)) return "sha256";
-  if (/^https?:\/\//i.test(value)) return "url";
-  if (/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(value)) return "domain";
+  // URL: has a scheme (http, https, ftp, …) OR has a path/query after a hostname
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return "url";
+  if (/^[a-z0-9.-]+\.[a-z]{2,}\/\S*/i.test(value)) return "url";
+  // Domain: clean hostname only — no scheme, no path, no port
+  if (/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(value)) return "domain";
 
   const typeMap: Record<string, string> = {
     ip_reputation: "ip",
@@ -115,16 +130,16 @@ function looksLikeIndicatorValue(value: string): boolean {
   const v = value.trim();
   // IPv4 / CIDR
   if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(\/\d+)?$/.test(v)) return true;
-  // MD5
+  // Hashes
   if (/^[0-9a-f]{32}$/i.test(v)) return true;
-  // SHA-1
   if (/^[0-9a-f]{40}$/i.test(v)) return true;
-  // SHA-256
   if (/^[0-9a-f]{64}$/i.test(v)) return true;
-  // URL
-  if (/^https?:\/\//i.test(v)) return true;
-  // Domain-like (has a dot and valid TLD, not all-digits)
-  if (/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(v) && /[a-z]/i.test(v)) return true;
+  // URL with scheme
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(v)) return true;
+  // URL without scheme but with a path (e.g. evil.com/payload)
+  if (/^[a-z0-9.-]+\.[a-z]{2,}\/\S*/i.test(v)) return true;
+  // Clean domain (hostname only, at least one dot, contains a letter)
+  if (/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(v)) return true;
   return false;
 }
 
@@ -171,6 +186,8 @@ function extractIndicatorsFromLine(
 
   for (const { token, isFromComment } of allTokens) {
     if (!looksLikeIndicatorValue(token)) continue;
+    // Skip null-route / loopback IPs (0.0.0.0, 127.0.0.1, etc.) — hosts-file redirect targets
+    if (isNullRouteIp(token)) continue;
 
     const indicator_type = detectIndicatorType(token, feedType);
     let country: string | null = null;
