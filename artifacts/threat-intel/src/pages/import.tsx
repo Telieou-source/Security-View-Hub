@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Loader2, UploadCloud, CheckCircle2, AlertTriangle, Link2, FileText } from "lucide-react";
+import { Loader2, UploadCloud, CheckCircle2, AlertTriangle, Link2, FileText, Trash2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ImportHistory, DuplicateWarning } from "@/components/HistoryLog";
 
@@ -41,8 +41,26 @@ export default function Import() {
   const [result, setResult] = useState<any>(null);
   const [isDuplicate, setIsDuplicate] = useState(false);
   const [historyKey, setHistoryKey] = useState(0);
+  const [confirmPurge, setConfirmPurge] = useState(false);
+  const [purging, setPurging] = useState(false);
 
   const watchUrl = mode === "url" ? remoteUrl : undefined;
+
+  const handlePurge = async () => {
+    setPurging(true);
+    try {
+      const res = await fetch(`${BASE_URL}api/indicators/purge`, { method: "DELETE" });
+      const data = await res.json();
+      toast({ title: "All data cleared", description: `${(data.deleted_indicators ?? 0).toLocaleString()} indicators removed.` });
+      setResult(null);
+      setHistoryKey(k => k + 1);
+    } catch {
+      toast({ title: "Purge failed", variant: "destructive" });
+    } finally {
+      setPurging(false);
+      setConfirmPurge(false);
+    }
+  };
 
   const handlePasteImport = () => {
     if (!feedName || !csvContent) {
@@ -252,6 +270,55 @@ export default function Import() {
         refreshKey={historyKey}
         onDeleted={() => setHistoryKey(k => k + 1)}
       />
+
+      {/* ── Danger Zone ──────────────────────────────── */}
+      <Card className="border-destructive/40 bg-destructive/5">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-destructive text-base">
+            <Trash2 className="w-4 h-4" />
+            Danger Zone
+          </CardTitle>
+          <CardDescription>
+            Permanently delete all indicators and import history. This cannot be undone.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {confirmPurge ? (
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-sm text-destructive font-medium">
+                This will delete ALL indicators and clear all import history. Are you sure?
+              </span>
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={purging}
+                onClick={handlePurge}
+              >
+                {purging ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Clearing…</> : "Yes, wipe everything"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={purging}
+                onClick={() => setConfirmPurge(false)}
+              >
+                <X className="w-3.5 h-3.5 mr-1" />
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-destructive/50 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+              onClick={() => setConfirmPurge(true)}
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-2" />
+              Zero Out All Threat Data
+            </Button>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
