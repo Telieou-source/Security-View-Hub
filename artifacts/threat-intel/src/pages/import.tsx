@@ -250,6 +250,7 @@ export default function Import() {
         watchUrl={watchUrl}
         onDuplicateWarning={setIsDuplicate}
         refreshKey={historyKey}
+        onDeleted={() => setHistoryKey(k => k + 1)}
       />
     </div>
   );

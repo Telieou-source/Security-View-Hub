@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Clock, ArrowDownToLine, ArrowUpFromLine, AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Clock, ArrowDownToLine, ArrowUpFromLine, AlertTriangle, Trash2, X } from "lucide-react";
 
 const BASE_URL = import.meta.env.BASE_URL ?? "/";
 
@@ -38,12 +39,15 @@ interface ImportHistoryProps {
   watchUrl?: string;
   onDuplicateWarning?: (isDuplicate: boolean) => void;
   refreshKey?: number;
+  onDeleted?: () => void;
 }
 
-export function ImportHistory({ watchUrl, onDuplicateWarning, refreshKey }: ImportHistoryProps) {
+export function ImportHistory({ watchUrl, onDuplicateWarning, refreshKey, onDeleted }: ImportHistoryProps) {
   const [rows, setRows] = useState<ImportRow[]>([]);
+  const [confirmId, setConfirmId] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState<number | null>(null);
 
-  useEffect(() => {
+  const load = () => {
     fetch(`${BASE_URL}api/history/imports`)
       .then(r => r.json())
       .then((data: ImportRow[]) => {
@@ -57,7 +61,21 @@ export function ImportHistory({ watchUrl, onDuplicateWarning, refreshKey }: Impo
         }
       })
       .catch(() => {});
-  }, [watchUrl, refreshKey]);
+  };
+
+  useEffect(() => { load(); }, [watchUrl, refreshKey]);
+
+  const handleDelete = async (id: number) => {
+    setDeleting(id);
+    try {
+      await fetch(`${BASE_URL}api/history/imports/${id}`, { method: "DELETE" });
+      setRows(prev => prev.filter(r => r.id !== id));
+      onDeleted?.();
+    } finally {
+      setDeleting(null);
+      setConfirmId(null);
+    }
+  };
 
   if (rows.length === 0) return null;
 
@@ -72,7 +90,7 @@ export function ImportHistory({ watchUrl, onDuplicateWarning, refreshKey }: Impo
       <CardContent className="p-0">
         <div className="divide-y divide-border">
           {rows.map(row => (
-            <div key={row.id} className="flex items-start gap-3 px-6 py-3 hover:bg-muted/30 transition-colors">
+            <div key={row.id} className="flex items-start gap-3 px-6 py-3 hover:bg-muted/30 transition-colors group">
               <Clock className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -94,12 +112,46 @@ export function ImportHistory({ watchUrl, onDuplicateWarning, refreshKey }: Impo
                   </div>
                 )}
               </div>
+
               <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
                 <span className="text-primary font-mono">+{formatNum(row.indicators_added)}</span>
                 {row.indicators_updated > 0 && (
                   <span className="font-mono text-yellow-500">~{formatNum(row.indicators_updated)}</span>
                 )}
                 <span className="text-muted-foreground">{relativeTime(row.created_at)}</span>
+
+                {confirmId === row.id ? (
+                  <div className="flex items-center gap-1">
+                    <span className="text-destructive font-medium">Delete all indicators?</span>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="h-6 px-2 text-xs"
+                      disabled={deleting === row.id}
+                      onClick={() => handleDelete(row.id)}
+                    >
+                      {deleting === row.id ? "Deleting…" : "Yes, delete"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 w-6 p-0"
+                      onClick={() => setConfirmId(null)}
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                    onClick={() => setConfirmId(row.id)}
+                    title="Delete this import and all its indicators"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                )}
               </div>
             </div>
           ))}
