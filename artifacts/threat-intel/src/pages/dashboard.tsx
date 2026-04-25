@@ -4,6 +4,12 @@ import { Shield, Activity, Globe, Database, Loader2 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import WorldThreatMap from "@/components/WorldThreatMap";
 
+const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
+function countryName(code: string): string {
+  if (!code || code === "XX") return "Unknown";
+  try { return regionNames.of(code) ?? code; } catch { return code; }
+}
+
 export default function Dashboard() {
   const { data: stats, isLoading: statsLoading } = useGetStats({ query: { queryKey: getGetStatsQueryKey() } });
   const { data: byType, isLoading: typeLoading } = useGetStatsByType({ query: { queryKey: getGetStatsByTypeQueryKey() } });
@@ -151,10 +157,14 @@ export default function Dashboard() {
               <div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={(byCountry || []).slice(0, 10)} layout="vertical" margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <BarChart
+                  data={(byCountry || []).slice(0, 10).map(r => ({ ...r, label: countryName(r.label) }))}
+                  layout="vertical"
+                  margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke="#333" horizontal={false} />
                   <XAxis type="number" stroke="#666" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis dataKey="label" type="category" stroke="#666" fontSize={12} tickLine={false} axisLine={false} width={40} />
+                  <YAxis dataKey="label" type="category" stroke="#666" fontSize={11} tickLine={false} axisLine={false} width={120} />
                   <Tooltip cursor={{ fill: 'rgba(255,255,255,0.05)' }} contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '4px' }} />
                   <Bar dataKey="count" radius={[0, 4, 4, 0]} fill="hsl(var(--chart-4))" />
                 </BarChart>
