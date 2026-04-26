@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Loader2, Search, FilterX, ChevronLeft, ChevronRight, Link2, ExternalLink } from "lucide-react";
+import { Loader2, Search, FilterX, ChevronLeft, ChevronRight, Link2, ExternalLink, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { COUNTRIES } from "@/lib/countries";
 
@@ -149,11 +149,14 @@ function CorrelationPanel({ indicator, onClose }: { indicator: Indicator; onClos
 }
 
 export default function Indicators() {
+  // Initialise filters from URL search params (set by dashboard chart clicks)
+  const qs = () => new URLSearchParams(window.location.search);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [countryFilter, setCountryFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState(() => qs().get("type") || "all");
+  const [countryFilter, setCountryFilter] = useState(() => qs().get("country") || "all");
+  const [sourceFilter, setSourceFilter] = useState(() => qs().get("source") || "");
   const [selected, setSelected] = useState<Indicator | null>(null);
 
   const queryClient = useQueryClient();
@@ -164,6 +167,7 @@ export default function Indicators() {
     search: debouncedSearch || undefined,
     indicator_type: typeFilter !== "all" ? typeFilter : undefined,
     country: countryFilter !== "all" ? countryFilter : undefined,
+    source_feed: sourceFilter || undefined,
   };
 
   const { data, isLoading, isFetching } = useListIndicators(params, {
@@ -182,6 +186,7 @@ export default function Indicators() {
     setDebouncedSearch("");
     setTypeFilter("all");
     setCountryFilter("all");
+    setSourceFilter("");
     setPage(1);
   };
 
@@ -192,6 +197,19 @@ export default function Indicators() {
           <h1 className="text-3xl font-bold tracking-tight">Indicators Database</h1>
           <p className="text-muted-foreground mt-1">Search, filter, and explore all ingested threat indicators. Click any row to see correlations.</p>
         </div>
+
+        {sourceFilter && (
+          <div className="flex items-center gap-2 text-sm bg-primary/10 border border-primary/20 rounded-md px-3 py-2">
+            <span className="text-muted-foreground">Source:</span>
+            <span className="font-mono text-primary font-medium">{sourceFilter}</span>
+            <button
+              className="ml-auto text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => { setSourceFilter(""); setPage(1); }}
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="relative flex-1">
