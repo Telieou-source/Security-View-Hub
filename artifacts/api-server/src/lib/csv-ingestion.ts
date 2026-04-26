@@ -129,6 +129,22 @@ function detectFieldMapping(headers: string[]): FieldMapping {
  */
 const NULL_ROUTE_IPS = new Set(["0.0.0.0", "127.0.0.1", "::1", "::", "255.255.255.255"]);
 
+/**
+ * If a URL's hostname is a bare IPv4 address, return that IP string.
+ * e.g. "http://192.168.1.1/payload.exe" → "192.168.1.1"
+ * Returns null if the hostname is a domain name or the URL cannot be parsed.
+ */
+function extractIpFromUrl(urlStr: string): string | null {
+  try {
+    const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(urlStr) ? urlStr : `http://${urlStr}`;
+    const hostname = new URL(withScheme).hostname;
+    if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) return hostname;
+  } catch {
+    // malformed URL — ignore
+  }
+  return null;
+}
+
 function isNullRouteIp(value: string): boolean {
   return NULL_ROUTE_IPS.has(value.trim());
 }
@@ -275,8 +291,16 @@ function extractIndicatorsFromLine(
 
     const indicator_type = detectIndicatorType(token, feedType);
     let country: string | null = null;
+    let embeddedIp: string | null = null;
+
     if (indicator_type === "ip") {
       country = lookupCountry(token);
+    } else if (indicator_type === "url") {
+      // If the URL's hostname is a bare IP, extract it for geo-lookup and correlation
+      embeddedIp = extractIpFromUrl(token);
+      if (embeddedIp && !isNullRouteIp(embeddedIp)) {
+        country = lookupCountry(embeddedIp);
+      }
     }
 
     results.push({
@@ -291,6 +315,21 @@ function extractIndicatorsFromLine(
       confidence: null,
       correlation_id: null, // assigned below when multiple indicators share a line
     });
+
+    // Emit a sibling IP indicator for any URL that resolves to a bare-IP host
+    if (embeddedIp && !isNullRouteIp(embeddedIp)) {
+      results.push({
+        indicator: embeddedIp,
+        indicator_type: "ip",
+        source_feed: sourceFeed,
+        description: !isFromComment ? pureCommentText : null,
+        country,
+        first_seen: null,
+        last_seen: null,
+        confidence: null,
+        correlation_id: null, // assigned below
+      });
+    }
   }
 
   // When a single line produced multiple indicators, link them with a shared correlation_id
@@ -427,6 +466,7 @@ export function parseCsvToIndicators(
         // Pre-resolve row-level country: look up geoip on any IP column so that
         // sibling indicators (URLs, domains) on the same row inherit the country.
         let rowCountry: string | null = sharedRawCountry;
+        let embeddedUrlIp: string | null = null; // IP extracted from a URL-hostname
         if (!rowCountry) {
           // Check primary column
           const primaryRaw = sanitizeField(cols[fieldMap.indicator] ?? "");
@@ -434,6 +474,13 @@ export function parseCsvToIndicators(
             || detectIndicatorType(primaryRaw, feedType);
           if (primaryType === "ip" && primaryRaw) {
             rowCountry = lookupCountry(primaryRaw);
+          } else if (primaryType === "url" && primaryRaw) {
+            // URL whose hostname is a bare IP (e.g. http://1.2.3.4/malware)
+            const eip = extractIpFromUrl(primaryRaw);
+            if (eip && !isNullRouteIp(eip)) {
+              embeddedUrlIp = eip;
+              rowCountry = lookupCountry(eip);
+            }
           }
           // Check extra indicator columns for an IP
           if (!rowCountry) {
@@ -449,9 +496,11 @@ export function parseCsvToIndicators(
           }
         }
 
-        // Generate a shared correlation_id for all indicators from this row when there are multiple
-        const hasMultiple = extraIndicatorCols.length > 0;
-        const rowCorrelationId = hasMultiple ? crypto.randomUUID() : null;
+        // Generate a shared correlation_id for all indicators from this row when there are multiple.
+        // Also force one if the primary URL contains an embedded IP (yields an extra IP indicator).
+        let rowCorrelationId: string | null = null;
+        const hasMultiple = extraIndicatorCols.length > 0 || embeddedUrlIp !== null;
+        if (hasMultiple) rowCorrelationId = crypto.randomUUID();
 
         // Helper to build and push one indicator from a raw value + optional forced type
         const pushIndicator = (rawValue: string, forcedType?: string) => {
@@ -475,6 +524,21 @@ export function parseCsvToIndicators(
         // Primary indicator column
         const rawPrimary = cols[fieldMap.indicator] ?? "";
         pushIndicator(rawPrimary);
+
+        // If the primary URL contained a bare-IP hostname, emit a correlated IP indicator
+        if (embeddedUrlIp) {
+          indicators.push({
+            indicator: embeddedUrlIp,
+            indicator_type: "ip",
+            source_feed: sourceFeed,
+            first_seen: sharedFirstSeen,
+            last_seen: sharedLastSeen,
+            confidence: sharedConfidence,
+            country: rowCountry,
+            description: sharedDescription,
+            correlation_id: rowCorrelationId,
+          });
+        }
 
         // Extra indicator columns (e.g. a URL column alongside an IP column)
         for (const extra of extraIndicatorCols) {
