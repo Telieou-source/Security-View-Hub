@@ -2,7 +2,7 @@
 
 A full-stack threat intelligence platform designed for **air-gapped environments**. Manually ingest open-source CSV and plain-text threat feeds, normalize them into a unified indicator database, and explore the data through an interactive dashboard — with no internet dependency at runtime.
 
-![Dashboard](https://img.shields.io/badge/stack-React%20%2B%20Express%20%2B%20PostgreSQL-blue)
+![Stack](https://img.shields.io/badge/stack-React%20%2B%20Express%20%2B%20PostgreSQL-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Air-Gapped](https://img.shields.io/badge/deployment-air--gapped-orange)
 
@@ -21,6 +21,7 @@ A full-stack threat intelligence platform designed for **air-gapped environments
 - **Indicator correlation** — indicators from the same source row share a `correlation_id`; click any row to see its related indicators in a slide-out panel
 - **Interactive dashboard** — world map, indicators-by-type, top-feed-sources, and top-countries charts; click any chart bar to filter the indicator table
 - **CSV / JSON export** — download your full dataset or a filtered subset for use in SIEMs, firewalls, or other tools
+- **Air-gapped package export** — one-click download of a fully self-contained distribution bundle from the UI
 - **Import & export history** — full audit log of every ingest and export
 
 ---
@@ -57,20 +58,19 @@ A full-stack threat intelligence platform designed for **air-gapped environments
 ### Install
 
 ```bash
-git clone https://github.com/your-org/threat-intel.git
-cd threat-intel
+git clone https://github.com/Telieou-source/Security-View-Hub.git
+cd Security-View-Hub
 pnpm install
 ```
 
 ### Configure
 
 ```bash
-# Set your PostgreSQL connection string
 export DATABASE_URL=postgres://postgres:password@localhost:5432/threatintel
 export SESSION_SECRET=your-random-secret
 ```
 
-Or create a `.env` file at the repo root.
+Or create a `.env` file at the repo root with the above variables.
 
 ### Database setup
 
@@ -85,7 +85,7 @@ cd lib/db && pnpm run push
 # Start API server
 pnpm --filter @workspace/api-server run dev
 
-# Start frontend (in a separate terminal)
+# Start frontend (separate terminal)
 pnpm --filter @workspace/threat-intel run dev
 ```
 
@@ -95,22 +95,32 @@ The UI opens at the URL shown in the frontend terminal output.
 
 ## Air-Gapped Deployment
 
-A single script builds a fully self-contained tarball that only requires Node.js and PostgreSQL on the target machine — no npm, no internet.
+### Pre-built release
+
+Download the latest pre-built distribution from the [GitHub Releases page](https://github.com/Telieou-source/Security-View-Hub/releases):
+
+```
+threat-intel-dist.tar.gz  (~37 MB)
+```
+
+This tarball requires only **Node.js v18+** and **PostgreSQL 13+** — no npm, no internet.
+
+### Build from source
 
 ```bash
 bash scripts/build-dist.sh
 ```
 
-This produces `threat-intel-dist.tar.gz` (~35–50 MB) containing:
+This produces `threat-intel-dist.tar.gz` containing:
 
 ```
 threat-intel-dist/
-├── server.mjs          ← compiled API server
+├── server.mjs          ← compiled API server (esbuild bundle)
 ├── pino-*.mjs          ← logging workers
 ├── node_modules/
 │   └── geoip-lite/     ← offline IP-to-country database
-├── public/             ← compiled React UI
-├── schema.sql          ← database schema (run once)
+├── public/             ← compiled React UI (Vite build)
+├── schema.sql          ← database schema (safe to re-run)
 ├── .env.example
 ├── start.sh            ← Linux / macOS launcher
 ├── start.bat           ← Windows launcher
@@ -138,6 +148,10 @@ cp .env.example .env
 
 # Open http://localhost:3000
 ```
+
+### Upgrading
+
+Replace all files except `.env` and (optionally) `schema.sql`, then re-run `schema.sql` — all `CREATE TABLE` statements use `IF NOT EXISTS` so they are safe to re-run and will only add new tables or columns.
 
 ---
 
@@ -172,7 +186,7 @@ The parser auto-detects the format — no configuration required.
 │   │   │       ├── indicators.ts
 │   │   │       ├── stats.ts
 │   │   │       ├── history.ts
-│   │   │       └── exports.ts
+│   │   │       └── exports.ts         # CSV / JSON / airgap export endpoints
 │   │   └── build.mjs                  # esbuild bundler config
 │   └── threat-intel/        # React frontend
 │       └── src/
@@ -207,18 +221,20 @@ The parser auto-detects the format — no configuration required.
 | `GET` | `/api/stats/by-type` | Breakdown by indicator type |
 | `GET` | `/api/stats/by-country` | Breakdown by country |
 | `GET` | `/api/stats/by-feed` | Breakdown by source feed |
-| `GET` | `/api/export/csv` | Export as CSV |
-| `GET` | `/api/export/json` | Export as JSON |
+| `GET` | `/api/export/csv` | Export all indicators as CSV |
+| `GET` | `/api/export/json` | Export all indicators as JSON |
+| `POST` | `/api/export/airgap` | Generate airgap package metadata & checksum |
+| `GET` | `/api/export/airgap/package` | Stream full airgap distribution tarball |
 | `GET` | `/api/history/imports` | Import history |
 | `GET` | `/api/history/exports` | Export history |
 
-Query parameters for `GET /api/indicators`:
+### Query parameters for `GET /api/indicators`
 
 | Param | Type | Description |
 |-------|------|-------------|
 | `page` | number | Page number (default: 1) |
 | `limit` | number | Results per page (default: 50) |
-| `search` | string | Full-text search on indicator and source |
+| `search` | string | Full-text search on indicator value and source |
 | `indicator_type` | string | Filter by type (`ip`, `domain`, `url`, `hash`, …) |
 | `country` | string | Filter by ISO 3166-1 alpha-2 country code |
 | `source_feed` | string | Filter by source feed name |
