@@ -6,3 +6,9 @@ id = "TsOaHFNC0t7aqit1MGC50"
 uri = "file://threat-intel-dist.tar.gz"
 type = "unspecified"
 title = "threat-intel-dist.tar.gz — Air-Gapped Distribution (37 MB)"
+
+[[outputs]]
+id = "PIxfXyLqBhAnKt65oXXOv"
+uri = "file://README.md"
+type = "text"
+title = "README.md — GitHub README"
