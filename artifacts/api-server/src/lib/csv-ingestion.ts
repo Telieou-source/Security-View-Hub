@@ -244,9 +244,23 @@ function extractIndicatorsFromLine(
     .split(/\s+/)
     .filter(t => looksLikeIndicatorValue(t));
 
-  // If the comment has no embedded indicators, use it as a plain-text description
-  const pureCommentText =
-    commentPart && commentIndicatorTokens.length === 0 ? commentPart : null;
+  // Separators commonly used between a label and an embedded URL/indicator
+  // e.g.  "Dridex - http://..."  or  "Emotet | evil.com"
+  const COMMENT_SEPS = new Set(["-", "|", "–", "—", ":", ","]);
+
+  // Non-indicator, non-separator tokens from the comment become the description text.
+  // This preserves labels like "Dridex" even when the comment also contains a URL.
+  const commentTextTokens = commentPart
+    .split(/\s+/)
+    .filter(t => t.length > 0 && !COMMENT_SEPS.has(t) && !looksLikeIndicatorValue(t));
+
+  const pureCommentText: string | null = !commentPart
+    ? null
+    : commentIndicatorTokens.length === 0
+      ? commentPart                                         // whole comment is plain text
+      : commentTextTokens.length > 0
+        ? commentTextTokens.join(" ")                       // label tokens alongside an indicator
+        : null;                                             // comment was only an indicator value
 
   // Emit an indicator for every valid token — from both data and comment parts
   const allTokens: Array<{ token: string; isFromComment: boolean }> = [
