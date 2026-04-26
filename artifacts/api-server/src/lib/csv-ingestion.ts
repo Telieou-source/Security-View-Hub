@@ -179,12 +179,13 @@ function looksLikeIndicatorValue(value: string): boolean {
  * For headerless plain-text threat feed lines, extract 0-N indicators.
  *
  * Handles the many formats found in the wild:
- *   "192.168.1.1"                     → 1 IP indicator
- *   "192.168.1.1 # just a comment"    → 1 IP indicator, description = "just a comment"
- *   "192.168.1.1 # mail.evil.com"     → 2 indicators: IP + domain
- *   "192.168.1.1 mail.evil.com"       → 2 indicators: IP + domain (space-separated)
- *   "0.0.0.0 ads.domain.com"          → 2 indicators: null-route IP + domain
- *   "bad.domain.com # 1.2.3.4"        → 2 indicators: domain + IP
+ *   "192.168.1.1"                                    → 1 IP indicator
+ *   "192.168.1.1 # just a comment"                   → 1 IP indicator, description = comment
+ *   "192.168.1.1 # mail.evil.com"                    → 2 indicators: IP + domain
+ *   "192.168.1.1 mail.evil.com"                      → 2 indicators: IP + domain (space-separated)
+ *   "0.0.0.0 ads.domain.com"                         → hosts-file: null-route skipped, domain kept
+ *   "bad.domain.com # 1.2.3.4"                       → 2 indicators: domain + IP
+ *   "1.2.3.4#4#2#Malicious Host#US#Ashburn#39.0,-77.4#3" → IP with country + geo description
  */
 function extractIndicatorsFromLine(
   rawLine: string,
@@ -192,6 +193,43 @@ function extractIndicatorsFromLine(
   feedType: string
 ): NormalizedIndicator[] {
   const results: NormalizedIndicator[] = [];
+
+  // ── Structured #-delimited threat intelligence format ─────────────────────
+  // Pattern: IP#score#score#Description#CountryCode#City#Lat,Lon#score
+  // Example: 49.143.32.6#4#2#Malicious Host#KR##37.511,126.974#3
+  // Detection: first field is an IP AND fifth field is a 2-letter ISO country code.
+  const hashParts = rawLine.split("#");
+  if (
+    hashParts.length >= 5 &&
+    /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(\/\d+)?$/.test(hashParts[0].trim()) &&
+    /^[A-Z]{2}$/.test(hashParts[4].trim())
+  ) {
+    const ip = hashParts[0].trim();
+    const label = hashParts[3]?.trim() || null;          // e.g. "Malicious Host"
+    const countryCode = hashParts[4].trim();              // e.g. "KR"
+    const city = hashParts[5]?.trim() || null;            // e.g. "Ashburn" (may be empty)
+    const latlon = hashParts[6]?.trim() || null;          // e.g. "39.048,-77.473"
+
+    // Compose a readable description from the available metadata
+    const descParts = [label, city, latlon ? `[${latlon}]` : null].filter(Boolean);
+    const description = descParts.length > 0 ? descParts.join(" | ") : null;
+
+    if (!isNullRouteIp(ip)) {
+      results.push({
+        indicator: ip,
+        indicator_type: "ip",
+        source_feed: sourceFeed,
+        country: countryCode,
+        description,
+        first_seen: null,
+        last_seen: null,
+        confidence: null,
+        correlation_id: null,
+      });
+    }
+    return results;
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   // Split at the first # — everything before is data, after is comment/description
   const hashIdx = rawLine.indexOf("#");
@@ -282,8 +320,35 @@ export function parseCsvToIndicators(
     return { indicators, errors };
   }
 
-  // Auto-detect delimiter (comma vs tab)
   const sampleLine = lines[firstDataLineIdx];
+
+  // ── Structured #-delimited format early-exit ────────────────────────────
+  // e.g. "1.2.3.4#4#2#Malicious Host#US#Ashburn#39.04,-77.47#3"
+  // The lat/lon coord contains a comma which would fool delimiter detection.
+  // Detect it on the raw line BEFORE any comma-splitting occurs.
+  {
+    const hp = sampleLine.split("#");
+    if (
+      hp.length >= 5 &&
+      /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(\/\d+)?$/.test(hp[0].trim()) &&
+      /^[A-Z]{2}$/.test(hp[4].trim())
+    ) {
+      for (let i = firstDataLineIdx; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+        if (!trimmed || trimmed.startsWith(";") || trimmed.startsWith("//")) continue;
+        try {
+          const extracted = extractIndicatorsFromLine(trimmed, sourceFeed, feedType);
+          indicators.push(...extracted);
+        } catch (err) {
+          errors.push(`Row ${i + 1}: ${String(err)}`);
+        }
+      }
+      return { indicators, errors };
+    }
+  }
+  // ───────────────────────────────────────────────────────────────────────
+
+  // Auto-detect delimiter (comma vs tab)
   const delimiter = sampleLine.includes("\t") ? "\t" : ",";
 
   const splitLine = (line: string): string[] => {
