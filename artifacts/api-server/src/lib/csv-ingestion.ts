@@ -60,18 +60,32 @@ function parseCsvLine(line: string): string[] {
   return result;
 }
 
-function detectFieldMapping(headers: string[]): Record<string, number> {
+/** Columns that may contain additional indicator values (beyond the primary indicator column) */
+const EXTRA_INDICATOR_ALIASES: Array<{ aliases: string[]; type: string }> = [
+  { aliases: ["ip", "ip_address", "ip_addr", "ipv4", "ipv6"], type: "ip" },
+  { aliases: ["url", "uri", "link", "c2_url", "c2url", "download_url"], type: "url" },
+  { aliases: ["domain", "hostname", "host", "fqdn"], type: "domain" },
+  { aliases: ["md5", "sha1", "sha256", "hash", "file_hash", "filehash"], type: "hash" },
+];
+
+export interface FieldMapping {
+  map: Record<string, number>;
+  /** Additional columns that each contain a separate indicator value */
+  extraIndicatorCols: Array<{ index: number; inferredType: string; colName: string }>;
+}
+
+function detectFieldMapping(headers: string[]): FieldMapping {
   const lower = headers.map((h) => h.toLowerCase().trim());
   const map: Record<string, number> = {};
 
   const fieldAliases: Record<string, string[]> = {
     indicator: ["indicator", "ip", "ip_address", "ioc", "value", "host", "domain", "url", "hash", "md5", "sha256", "sha1"],
     indicator_type: ["indicator_type", "type", "ioc_type", "category"],
-    first_seen: ["first_seen", "first_seen_utc", "firstseen", "date_added", "date"],
+    first_seen: ["first_seen", "first_seen_utc", "firstseen", "date_added", "date", "firstseen_utc"],
     last_seen: ["last_seen", "last_seen_utc", "lastseen", "updated", "last_online"],
     confidence: ["confidence", "score", "risk_score"],
     country: ["country", "country_code", "cc", "geo_country"],
-    description: ["description", "comment", "notes", "reason", "threat_name"],
+    description: ["description", "comment", "notes", "reason", "threat_name", "family", "malware_family", "malware", "tags", "tag"],
   };
 
   for (const [field, aliases] of Object.entries(fieldAliases)) {
@@ -88,7 +102,23 @@ function detectFieldMapping(headers: string[]): Record<string, number> {
     map.indicator = 0;
   }
 
-  return map;
+  // Detect additional indicator columns — any recognized indicator-type column
+  // that was NOT already selected as the primary indicator column.
+  const usedIndices = new Set(Object.values(map));
+  const extraIndicatorCols: FieldMapping["extraIndicatorCols"] = [];
+
+  for (const { aliases, type } of EXTRA_INDICATOR_ALIASES) {
+    for (const alias of aliases) {
+      const idx = lower.indexOf(alias);
+      if (idx !== -1 && !usedIndices.has(idx)) {
+        extraIndicatorCols.push({ index: idx, inferredType: type, colName: lower[idx] });
+        usedIndices.add(idx);
+        break;
+      }
+    }
+  }
+
+  return { map, extraIndicatorCols };
 }
 
 /**
@@ -257,6 +287,7 @@ export function parseCsvToIndicators(
   const isHeaderless = looksLikeIndicatorValue(firstToken);
 
   let fieldMap: Record<string, number>;
+  let extraIndicatorCols: FieldMapping["extraIndicatorCols"] = [];
   let dataStartIdx: number;
 
   if (isHeaderless) {
@@ -265,7 +296,9 @@ export function parseCsvToIndicators(
     dataStartIdx = firstDataLineIdx; // include the first data line
   } else {
     // Treat first data line as CSV header
-    fieldMap = detectFieldMapping(firstLineCols);
+    const detected = detectFieldMapping(firstLineCols);
+    fieldMap = detected.map;
+    extraIndicatorCols = detected.extraIndicatorCols;
     dataStartIdx = firstDataLineIdx + 1;
 
     if (fieldMap.indicator === undefined) {
@@ -290,32 +323,44 @@ export function parseCsvToIndicators(
       } else {
         // Standard CSV path — header-mapped columns
         const cols = splitLine(line);
-        const rawIndicator = sanitizeField(cols[fieldMap.indicator]);
-        if (!rawIndicator) continue;
 
-        const rawType = fieldMap.indicator_type !== undefined ? sanitizeField(cols[fieldMap.indicator_type]) : "";
-        const indicator_type = rawType || detectIndicatorType(rawIndicator, feedType);
+        // Shared metadata that applies to all indicators on this row
+        const sharedFirstSeen = fieldMap.first_seen !== undefined ? sanitizeField(cols[fieldMap.first_seen]) || null : null;
+        const sharedLastSeen = fieldMap.last_seen !== undefined ? sanitizeField(cols[fieldMap.last_seen]) || null : null;
+        const sharedConfidence = fieldMap.confidence !== undefined ? parseInt(cols[fieldMap.confidence] ?? "", 10) || null : null;
+        const sharedDescription = fieldMap.description !== undefined ? sanitizeField(cols[fieldMap.description]) || null : null;
+        const sharedRawCountry = fieldMap.country !== undefined ? sanitizeField(cols[fieldMap.country]) || null : null;
 
-        const rawCountry = fieldMap.country !== undefined ? sanitizeField(cols[fieldMap.country]) || null : null;
-
-        // Enrich IPs with geoip when no country is available in the feed data
-        let resolvedCountry = rawCountry;
-        if (!resolvedCountry && indicator_type === "ip") {
-          resolvedCountry = lookupCountry(rawIndicator);
-        }
-
-        const indicator: NormalizedIndicator = {
-          indicator: rawIndicator,
-          indicator_type,
-          source_feed: sourceFeed,
-          first_seen: fieldMap.first_seen !== undefined ? sanitizeField(cols[fieldMap.first_seen]) || null : null,
-          last_seen: fieldMap.last_seen !== undefined ? sanitizeField(cols[fieldMap.last_seen]) || null : null,
-          confidence: fieldMap.confidence !== undefined ? parseInt(cols[fieldMap.confidence] ?? "", 10) || null : null,
-          country: resolvedCountry,
-          description: fieldMap.description !== undefined ? sanitizeField(cols[fieldMap.description]) || null : null,
+        // Helper to build and push one indicator from a raw value + optional forced type
+        const pushIndicator = (rawValue: string, forcedType?: string) => {
+          const v = sanitizeField(rawValue);
+          if (!v) return;
+          const indicator_type = forcedType || (fieldMap.indicator_type !== undefined ? sanitizeField(cols[fieldMap.indicator_type]) : "") || detectIndicatorType(v, feedType);
+          let resolvedCountry = sharedRawCountry;
+          if (!resolvedCountry && indicator_type === "ip") {
+            resolvedCountry = lookupCountry(v);
+          }
+          indicators.push({
+            indicator: v,
+            indicator_type,
+            source_feed: sourceFeed,
+            first_seen: sharedFirstSeen,
+            last_seen: sharedLastSeen,
+            confidence: sharedConfidence,
+            country: resolvedCountry,
+            description: sharedDescription,
+          });
         };
 
-        indicators.push(indicator);
+        // Primary indicator column
+        const rawPrimary = cols[fieldMap.indicator] ?? "";
+        pushIndicator(rawPrimary);
+
+        // Extra indicator columns (e.g. a URL column alongside an IP column)
+        for (const extra of extraIndicatorCols) {
+          const rawExtra = cols[extra.index] ?? "";
+          pushIndicator(rawExtra, extra.inferredType);
+        }
       }
     } catch (err) {
       errors.push(`Row ${i + 1}: ${String(err)}`);
