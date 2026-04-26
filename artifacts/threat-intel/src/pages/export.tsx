@@ -13,16 +13,15 @@ function buildQs(typeFilter: string): string {
   return typeFilter !== "all" ? `?indicator_type=${encodeURIComponent(typeFilter)}` : "";
 }
 
-function triggerBlobDownload(content: string | object, filename: string, mimeType: string) {
-  const blobContent = typeof content === "string" ? content : JSON.stringify(content, null, 2);
-  const blob = new Blob([blobContent], { type: mimeType });
-  const url = URL.createObjectURL(blob);
+// Trigger a native browser file download by navigating an invisible anchor.
+// The server sets Content-Disposition: attachment so the browser saves the file
+// directly to disk — no JavaScript memory buffering of large payloads.
+function triggerAnchorDownload(url: string) {
   const a = document.createElement("a");
   a.href = url;
-  a.download = filename;
+  a.style.display = "none";
   document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
   document.body.removeChild(a);
 }
 
@@ -31,54 +30,33 @@ export default function Export() {
 
   const [typeFilter, setTypeFilter] = useState("all");
   const [historyKey, setHistoryKey] = useState(0);
-  const [csvPending, setCsvPending] = useState(false);
-  const [jsonPending, setJsonPending] = useState(false);
   const [airgapPending, setAirgapPending] = useState(false);
-  const [airgapResult, setAirgapResult] = useState<any>(null);
+  const [airgapMeta, setAirgapMeta] = useState<any>(null);
 
-  const today = new Date().toISOString().split("T")[0];
-
-  const handleCsvExport = async () => {
-    setCsvPending(true);
-    try {
-      const res = await fetch(`${BASE_URL}api/export/csv${buildQs(typeFilter)}`);
-      if (!res.ok) throw new Error(`Server returned ${res.status}`);
-      const text = await res.text();
-      triggerBlobDownload(text, `threat-intel-${today}.csv`, "text/csv");
-      toast({ title: "CSV Export Complete", description: "Download started." });
-      setHistoryKey(k => k + 1);
-    } catch (e: any) {
-      toast({ title: "CSV Export Failed", description: e.message, variant: "destructive" });
-    } finally {
-      setCsvPending(false);
-    }
+  const handleCsvExport = () => {
+    triggerAnchorDownload(`${BASE_URL}api/export/csv${buildQs(typeFilter)}`);
+    toast({ title: "CSV Export Started", description: "Your browser will prompt you to save the file." });
+    setTimeout(() => setHistoryKey(k => k + 1), 1500);
   };
 
-  const handleJsonExport = async () => {
-    setJsonPending(true);
-    try {
-      const res = await fetch(`${BASE_URL}api/export/json${buildQs(typeFilter)}`);
-      if (!res.ok) throw new Error(`Server returned ${res.status}`);
-      const json = await res.json();
-      triggerBlobDownload(json, `threat-intel-${today}.json`, "application/json");
-      toast({ title: "JSON Export Complete", description: "Download started." });
-      setHistoryKey(k => k + 1);
-    } catch (e: any) {
-      toast({ title: "JSON Export Failed", description: e.message, variant: "destructive" });
-    } finally {
-      setJsonPending(false);
-    }
+  const handleJsonExport = () => {
+    triggerAnchorDownload(`${BASE_URL}api/export/json${buildQs(typeFilter)}`);
+    toast({ title: "JSON Export Started", description: "Your browser will prompt you to save the file." });
+    setTimeout(() => setHistoryKey(k => k + 1), 1500);
   };
 
+  // Step 1: POST to get metadata (lightweight — no raw data in response)
+  // Step 2: trigger the package download via a dedicated GET endpoint
   const handleAirgapExport = async () => {
     setAirgapPending(true);
-    setAirgapResult(null);
+    setAirgapMeta(null);
     try {
       const res = await fetch(`${BASE_URL}api/export/airgap`, { method: "POST" });
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
-      const data = await res.json();
-      setAirgapResult(data);
-      triggerBlobDownload(data, `airgap-package-${data.manifest.generated_at}.json`, "application/json");
+      const meta = await res.json();
+      setAirgapMeta(meta);
+      // Now trigger the actual file download via the GET streaming endpoint
+      triggerAnchorDownload(`${BASE_URL}api/export/airgap/package`);
       toast({ title: "Air-gap Package Generated", description: "Download started." });
       setHistoryKey(k => k + 1);
     } catch (e: any) {
@@ -127,9 +105,9 @@ export default function Export() {
             Includes all standard indicator fields. Applies current global filter.
           </CardContent>
           <CardFooter>
-            <Button className="w-full" variant="outline" onClick={handleCsvExport} disabled={csvPending}>
-              {csvPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <DownloadCloud className="w-4 h-4 mr-2" />}
-              {csvPending ? "Exporting…" : "Download CSV"}
+            <Button className="w-full" variant="outline" onClick={handleCsvExport}>
+              <DownloadCloud className="w-4 h-4 mr-2" />
+              Download CSV
             </Button>
           </CardFooter>
         </Card>
@@ -144,9 +122,9 @@ export default function Export() {
             Preserves metadata and typing. Applies current global filter.
           </CardContent>
           <CardFooter>
-            <Button className="w-full" variant="outline" onClick={handleJsonExport} disabled={jsonPending}>
-              {jsonPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <DownloadCloud className="w-4 h-4 mr-2" />}
-              {jsonPending ? "Exporting…" : "Download JSON"}
+            <Button className="w-full" variant="outline" onClick={handleJsonExport}>
+              <DownloadCloud className="w-4 h-4 mr-2" />
+              Download JSON
             </Button>
           </CardFooter>
         </Card>
@@ -171,7 +149,7 @@ export default function Export() {
 
       <ExportHistory refreshKey={historyKey} />
 
-      {airgapResult && (
+      {airgapMeta && (
         <Card className="border-border bg-card mt-8 animate-in fade-in slide-in-from-bottom-4">
           <CardHeader>
             <CardTitle className="text-xl">Package Details</CardTitle>
@@ -181,25 +159,25 @@ export default function Export() {
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <Label className="text-muted-foreground text-xs uppercase tracking-wider">Generated At</Label>
-                <div className="font-mono mt-1">{new Date(airgapResult.manifest.generated_at).toLocaleString()}</div>
+                <div className="font-mono mt-1">{new Date(airgapMeta.manifest.generated_at).toLocaleString()}</div>
               </div>
               <div>
                 <Label className="text-muted-foreground text-xs uppercase tracking-wider">Total Indicators</Label>
-                <div className="font-mono mt-1 text-primary">{airgapResult.manifest.total_indicators.toLocaleString()}</div>
+                <div className="font-mono mt-1 text-primary">{airgapMeta.manifest.total_indicators.toLocaleString()}</div>
               </div>
             </div>
 
             <div className="space-y-2">
               <Label className="text-muted-foreground text-xs uppercase tracking-wider">SHA-256 Checksum</Label>
               <div className="p-3 bg-muted rounded-md font-mono text-sm break-all text-primary/80 border border-border">
-                {airgapResult.checksum}
+                {airgapMeta.checksum}
               </div>
             </div>
 
             <div>
               <Label className="text-muted-foreground text-xs uppercase tracking-wider mb-2 block">Feed Breakdown</Label>
               <div className="bg-muted/50 rounded-md border border-border divide-y divide-border">
-                {airgapResult.manifest.feeds.map((f: any, i: number) => (
+                {airgapMeta.manifest.feeds.map((f: any, i: number) => (
                   <div key={i} className="flex justify-between p-3 text-sm">
                     <span className="font-medium">{f.name}</span>
                     <span className="font-mono text-muted-foreground">{f.count.toLocaleString()}</span>
@@ -207,6 +185,15 @@ export default function Export() {
                 ))}
               </div>
             </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => triggerAnchorDownload(`${BASE_URL}api/export/airgap/package`)}
+            >
+              <DownloadCloud className="w-4 h-4 mr-2" />
+              Re-download Package
+            </Button>
           </CardContent>
         </Card>
       )}

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, indicatorsTable, feedsTable } from "@workspace/db";
-import { eq, and, count } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { createHash } from "crypto";
 import { ExportCsvQueryParams, ExportJsonQueryParams } from "@workspace/api-zod";
 import { logExport } from "../lib/history";
@@ -35,6 +35,7 @@ function rowsToCsv(rows: typeof indicatorsTable.$inferSelect[]) {
   return [header, ...lines].join("\n");
 }
 
+// CSV — direct file download, browser handles it natively
 router.get("/csv", async (req, res) => {
   const parsed = ExportCsvQueryParams.safeParse(req.query);
   if (!parsed.success) {
@@ -45,11 +46,14 @@ router.get("/csv", async (req, res) => {
   const rows = await db.select().from(indicatorsTable).where(where).orderBy(indicatorsTable.created_at);
   await logExport({ format: "csv", indicator_count: rows.length, filters: parsed.data as Record<string, string | undefined> });
   const csv = rowsToCsv(rows);
-  res.setHeader("Content-Type", "text/csv");
-  res.setHeader("Content-Disposition", "attachment; filename=threat-intel-export.csv");
+  const today = new Date().toISOString().split("T")[0];
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="threat-intel-${today}.csv"`);
+  res.setHeader("Cache-Control", "no-store");
   res.send(csv);
 });
 
+// JSON — direct file download, browser handles it natively
 router.get("/json", async (req, res) => {
   const parsed = ExportJsonQueryParams.safeParse(req.query);
   if (!parsed.success) {
@@ -59,13 +63,15 @@ router.get("/json", async (req, res) => {
   const where = buildConditions(parsed.data);
   const rows = await db.select().from(indicatorsTable).where(where).orderBy(indicatorsTable.created_at);
   await logExport({ format: "json", indicator_count: rows.length, filters: parsed.data as Record<string, string | undefined> });
-  res.json({
-    exported_at: new Date().toISOString(),
-    total: rows.length,
-    indicators: rows,
-  });
+  const today = new Date().toISOString().split("T")[0];
+  const payload = JSON.stringify({ exported_at: new Date().toISOString(), total: rows.length, indicators: rows });
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="threat-intel-${today}.json"`);
+  res.setHeader("Cache-Control", "no-store");
+  res.send(payload);
 });
 
+// Airgap — POST returns lightweight metadata only (for UI display)
 router.post("/airgap", async (req, res) => {
   const rows = await db.select().from(indicatorsTable).orderBy(indicatorsTable.created_at);
   const feeds = await db.select().from(feedsTable);
@@ -76,8 +82,6 @@ router.post("/airgap", async (req, res) => {
   }));
 
   const csv = rowsToCsv(rows);
-  const json = JSON.stringify({ exported_at: new Date().toISOString(), total: rows.length, indicators: rows }, null, 2);
-
   const checksum = createHash("sha256").update(csv).digest("hex");
 
   const manifest = {
@@ -88,12 +92,38 @@ router.post("/airgap", async (req, res) => {
 
   await logExport({ format: "airgap", indicator_count: rows.length });
 
-  res.json({
-    manifest,
-    checksum,
-    csv_data: csv,
-    json_data: json,
-  });
+  // Return metadata only — the full package is served by GET /airgap/package
+  res.json({ manifest, checksum });
+});
+
+// Airgap package download — GET endpoint that streams the full package as a file
+router.get("/airgap/package", async (req, res) => {
+  const rows = await db.select().from(indicatorsTable).orderBy(indicatorsTable.created_at);
+  const feeds = await db.select().from(feedsTable);
+
+  const feedCounts = feeds.map((f) => ({
+    name: f.name,
+    count: rows.filter((r) => r.source_feed === f.name).length,
+  }));
+
+  const csv = rowsToCsv(rows);
+  const checksum = createHash("sha256").update(csv).digest("hex");
+
+  const manifest = {
+    generated_at: new Date().toISOString(),
+    total_indicators: rows.length,
+    feeds: feedCounts,
+  };
+
+  const indicatorsJson = JSON.stringify({ exported_at: manifest.generated_at, total: rows.length, indicators: rows });
+
+  const pkg = JSON.stringify({ manifest, checksum, csv_data: csv, json_data: indicatorsJson });
+
+  const today = new Date().toISOString().split("T")[0];
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="airgap-package-${today}.json"`);
+  res.setHeader("Cache-Control", "no-store");
+  res.send(pkg);
 });
 
 export default router;
