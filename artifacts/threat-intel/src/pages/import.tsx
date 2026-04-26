@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useImportIndicators, ImportIndicatorsBodyFeedType } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Loader2, UploadCloud, CheckCircle2, AlertTriangle, Link2, FileText, Trash2, X } from "lucide-react";
+import { Loader2, UploadCloud, CheckCircle2, AlertTriangle, Link2, FileText, Trash2, X, FolderOpen, File } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ImportHistory, DuplicateWarning } from "@/components/HistoryLog";
 
@@ -26,11 +26,24 @@ async function importFromUrl(payload: { url: string; feed_name: string; feed_typ
 }
 
 const FEED_TYPES = Object.values(ImportIndicatorsBodyFeedType);
-type Mode = "paste" | "url";
+type Mode = "paste" | "url" | "file";
+
+const ACCEPTED_EXTENSIONS = ".csv,.txt,.raw,.tsv,.log,.dat,.text,.ioc,.lst";
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function stemName(filename: string): string {
+  return filename.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
+}
 
 export default function Import() {
   const { toast } = useToast();
   const importMutation = useImportIndicators();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [mode, setMode] = useState<Mode>("url");
   const [feedName, setFeedName] = useState("");
@@ -43,6 +56,9 @@ export default function Import() {
   const [historyKey, setHistoryKey] = useState(0);
   const [confirmPurge, setConfirmPurge] = useState(false);
   const [purging, setPurging] = useState(false);
+
+  const [droppedFile, setDroppedFile] = useState<{ name: string; size: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const watchUrl = mode === "url" ? remoteUrl : undefined;
 
@@ -64,7 +80,7 @@ export default function Import() {
 
   const handlePasteImport = () => {
     if (!feedName || !csvContent) {
-      toast({ title: "Validation Error", description: "Feed name and CSV content are required.", variant: "destructive" });
+      toast({ title: "Validation Error", description: "Feed name and content are required.", variant: "destructive" });
       return;
     }
     importMutation.mutate({ data: { feed_name: feedName, feed_type: feedType, csv_content: csvContent } }, {
@@ -74,6 +90,7 @@ export default function Import() {
         if (data.success) {
           toast({ title: "Import Successful" });
           setCsvContent("");
+          setDroppedFile(null);
         } else {
           toast({ title: "Import Completed with Errors", variant: "destructive" });
         }
@@ -110,34 +127,59 @@ export default function Import() {
     }
   };
 
+  const loadFile = useCallback((file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      setCsvContent(text);
+      setDroppedFile({ name: file.name, size: file.size });
+      if (!feedName) setFeedName(stemName(file.name));
+    };
+    reader.onerror = () => toast({ title: "File read error", variant: "destructive" });
+    reader.readAsText(file, "utf-8");
+  }, [feedName, toast]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) loadFile(file);
+    e.target.value = "";
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) loadFile(file);
+  };
+
   const isPending = importMutation.isPending || urlPending;
+
+  const modeButtons: { id: Mode; label: string; icon: React.ReactNode }[] = [
+    { id: "url", label: "Import from URL", icon: <Link2 className="w-4 h-4" /> },
+    { id: "paste", label: "Paste Text", icon: <FileText className="w-4 h-4" /> },
+    { id: "file", label: "Upload File", icon: <FolderOpen className="w-4 h-4" /> },
+  ];
 
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Offline Import</h1>
-        <p className="text-muted-foreground mt-1">Ingest threat data from a remote URL or by pasting raw CSV content.</p>
+        <p className="text-muted-foreground mt-1">Ingest threat data from a remote URL, pasted text, or an uploaded file.</p>
       </div>
 
       <div className="flex gap-2">
-        <Button
-          variant={mode === "url" ? "default" : "outline"}
-          size="sm"
-          onClick={() => { setMode("url"); setResult(null); setIsDuplicate(false); }}
-          className="flex items-center gap-2"
-        >
-          <Link2 className="w-4 h-4" />
-          Import from URL
-        </Button>
-        <Button
-          variant={mode === "paste" ? "default" : "outline"}
-          size="sm"
-          onClick={() => { setMode("paste"); setResult(null); setIsDuplicate(false); }}
-          className="flex items-center gap-2"
-        >
-          <FileText className="w-4 h-4" />
-          Paste CSV
-        </Button>
+        {modeButtons.map(({ id, label, icon }) => (
+          <Button
+            key={id}
+            variant={mode === id ? "default" : "outline"}
+            size="sm"
+            onClick={() => { setMode(id); setResult(null); setIsDuplicate(false); setDroppedFile(null); setCsvContent(""); }}
+            className="flex items-center gap-2"
+          >
+            {icon}
+            {label}
+          </Button>
+        ))}
       </div>
 
       {isDuplicate && mode === "url" && remoteUrl && (
@@ -146,11 +188,15 @@ export default function Import() {
 
       <Card className="border-border bg-card">
         <CardHeader>
-          <CardTitle>{mode === "url" ? "Import from URL" : "Paste CSV Content"}</CardTitle>
+          <CardTitle>
+            {mode === "url" ? "Import from URL" : mode === "file" ? "Upload a File" : "Paste Feed Content"}
+          </CardTitle>
           <CardDescription>
             {mode === "url"
               ? "The server fetches the file directly — no size limits, no paste required."
-              : "Paste raw CSV or plain-text data. Supports comma/tab-delimited and headerless IP lists."}
+              : mode === "file"
+                ? "Upload any plain-text threat feed: .csv, .txt, .raw, .tsv, .log, and more."
+                : "Paste raw CSV or plain-text data. Supports comma/tab-delimited and headerless IP lists."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -159,7 +205,7 @@ export default function Import() {
               <Label htmlFor="feedName">Source Name</Label>
               <Input
                 id="feedName"
-                placeholder="e.g. Blocklist.de All Threats"
+                placeholder="e.g. Botvrij.eu Domains"
                 value={feedName}
                 onChange={e => setFeedName(e.target.value)}
               />
@@ -179,7 +225,7 @@ export default function Import() {
             </div>
           </div>
 
-          {mode === "url" ? (
+          {mode === "url" && (
             <div className="space-y-2">
               <Label htmlFor="remoteUrl">Feed URL</Label>
               <Input
@@ -193,9 +239,11 @@ export default function Import() {
                 Large files and plain-text IP lists are fully supported. The server fetches the URL — nothing is uploaded.
               </p>
             </div>
-          ) : (
+          )}
+
+          {mode === "paste" && (
             <div className="space-y-2">
-              <Label htmlFor="csvContent">CSV Content</Label>
+              <Label htmlFor="csvContent">Feed Content</Label>
               <Textarea
                 id="csvContent"
                 placeholder={"indicator,confidence,country\n192.168.1.1,90,US\nbad-domain.com,100,RU"}
@@ -206,10 +254,56 @@ export default function Import() {
             </div>
           )}
 
+          {mode === "file" && (
+            <div className="space-y-3">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ACCEPTED_EXTENSIONS}
+                className="hidden"
+                onChange={handleFileChange}
+              />
+
+              {droppedFile ? (
+                <div className="flex items-center gap-3 p-4 rounded-lg border border-primary/40 bg-primary/5">
+                  <File className="w-8 h-8 text-primary shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-mono text-sm font-medium truncate">{droppedFile.name}</p>
+                    <p className="text-xs text-muted-foreground">{formatBytes(droppedFile.size)} — ready to import</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setDroppedFile(null); setCsvContent(""); }}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div
+                  className={`flex flex-col items-center justify-center gap-3 p-10 rounded-lg border-2 border-dashed transition-colors cursor-pointer
+                    ${isDragging ? "border-primary bg-primary/10" : "border-border bg-muted/20 hover:border-primary/50 hover:bg-muted/40"}`}
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={handleDrop}
+                >
+                  <UploadCloud className={`w-10 h-10 ${isDragging ? "text-primary" : "text-muted-foreground"}`} />
+                  <div className="text-center">
+                    <p className="text-sm font-medium">Drop a file here or click to browse</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Accepts .csv, .txt, .raw, .tsv, .log, .dat and other plain-text formats
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex justify-end">
             <Button
               onClick={mode === "url" ? handleUrlImport : handlePasteImport}
-              disabled={isPending || (mode === "paste" ? !csvContent || !feedName : !remoteUrl || !feedName)}
+              disabled={isPending || (mode === "url" ? !remoteUrl || !feedName : !csvContent || !feedName)}
             >
               {isPending
                 ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
