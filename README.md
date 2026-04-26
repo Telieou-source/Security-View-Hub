@@ -6,7 +6,7 @@ A full-stack threat intelligence platform designed for **air-gapped environments
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Air-Gapped](https://img.shields.io/badge/deployment-air--gapped-orange)
 
-**Live demo:** [https://YOUR-PUBLISHED-URL.replit.app](https://YOUR-PUBLISHED-URL.replit.app)
+**Live demo:** [https://security-view-hub.replit.app](https://security-view-hub.replit.app)
 
 ---
 
