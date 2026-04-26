@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useExportCsv, useExportJson, useExportAirgap } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -8,65 +7,85 @@ import { FileText, FileJson, Package, Loader2, DownloadCloud } from "lucide-reac
 import { useToast } from "@/hooks/use-toast";
 import { ExportHistory } from "@/components/HistoryLog";
 
+const BASE_URL = import.meta.env.BASE_URL ?? "/";
+
+function buildQs(typeFilter: string): string {
+  return typeFilter !== "all" ? `?indicator_type=${encodeURIComponent(typeFilter)}` : "";
+}
+
+function triggerBlobDownload(content: string | object, filename: string, mimeType: string) {
+  const blobContent = typeof content === "string" ? content : JSON.stringify(content, null, 2);
+  const blob = new Blob([blobContent], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+}
+
 export default function Export() {
   const { toast } = useToast();
-  
+
   const [typeFilter, setTypeFilter] = useState("all");
   const [historyKey, setHistoryKey] = useState(0);
-  
-  const exportCsv = useExportCsv();
-  const exportJson = useExportJson();
-  const exportAirgap = useExportAirgap();
-
+  const [csvPending, setCsvPending] = useState(false);
+  const [jsonPending, setJsonPending] = useState(false);
+  const [airgapPending, setAirgapPending] = useState(false);
   const [airgapResult, setAirgapResult] = useState<any>(null);
 
-  const handleDownloadBlob = (content: string | object, filename: string, type: string) => {
-    const blobContent = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
-    const blob = new Blob([blobContent], { type });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-  };
-
-  const params = typeFilter !== "all" ? { indicator_type: typeFilter } : {};
+  const today = new Date().toISOString().split("T")[0];
 
   const handleCsvExport = async () => {
+    setCsvPending(true);
     try {
-      const data = await exportCsv(params);
-      handleDownloadBlob(data as any, `threat-intel-export-${new Date().toISOString().split('T')[0]}.csv`, "text/csv");
-      toast({ title: "CSV Export Started" });
+      const res = await fetch(`${BASE_URL}api/export/csv${buildQs(typeFilter)}`);
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const text = await res.text();
+      triggerBlobDownload(text, `threat-intel-${today}.csv`, "text/csv");
+      toast({ title: "CSV Export Complete", description: "Download started." });
       setHistoryKey(k => k + 1);
     } catch (e: any) {
-      toast({ title: "Export Failed", description: e.message, variant: "destructive" });
+      toast({ title: "CSV Export Failed", description: e.message, variant: "destructive" });
+    } finally {
+      setCsvPending(false);
     }
   };
 
   const handleJsonExport = async () => {
+    setJsonPending(true);
     try {
-      const { data } = await exportJson(params);
-      handleDownloadBlob(data as any, `threat-intel-export-${new Date().toISOString().split('T')[0]}.json`, "application/json");
-      toast({ title: "JSON Export Started" });
+      const res = await fetch(`${BASE_URL}api/export/json${buildQs(typeFilter)}`);
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const json = await res.json();
+      triggerBlobDownload(json, `threat-intel-${today}.json`, "application/json");
+      toast({ title: "JSON Export Complete", description: "Download started." });
       setHistoryKey(k => k + 1);
     } catch (e: any) {
-      toast({ title: "Export Failed", description: e.message, variant: "destructive" });
+      toast({ title: "JSON Export Failed", description: e.message, variant: "destructive" });
+    } finally {
+      setJsonPending(false);
     }
   };
 
-  const handleAirgapExport = () => {
-    exportAirgap.mutate(undefined, {
-      onSuccess: (data) => {
-        setAirgapResult(data);
-        handleDownloadBlob(data, `airgap-package-${data.manifest.generated_at}.json`, "application/json");
-        toast({ title: "Air-gap Package Generated", description: "Download started." });
-        setHistoryKey(k => k + 1);
-      },
-      onError: (e: any) => toast({ title: "Export Failed", description: e.message, variant: "destructive" })
-    });
+  const handleAirgapExport = async () => {
+    setAirgapPending(true);
+    setAirgapResult(null);
+    try {
+      const res = await fetch(`${BASE_URL}api/export/airgap`, { method: "POST" });
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const data = await res.json();
+      setAirgapResult(data);
+      triggerBlobDownload(data, `airgap-package-${data.manifest.generated_at}.json`, "application/json");
+      toast({ title: "Air-gap Package Generated", description: "Download started." });
+      setHistoryKey(k => k + 1);
+    } catch (e: any) {
+      toast({ title: "Air-gap Export Failed", description: e.message, variant: "destructive" });
+    } finally {
+      setAirgapPending(false);
+    }
   };
 
   return (
@@ -108,9 +127,9 @@ export default function Export() {
             Includes all standard indicator fields. Applies current global filter.
           </CardContent>
           <CardFooter>
-            <Button className="w-full" variant="outline" onClick={handleCsvExport}>
-              <DownloadCloud className="w-4 h-4 mr-2" />
-              Download CSV
+            <Button className="w-full" variant="outline" onClick={handleCsvExport} disabled={csvPending}>
+              {csvPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <DownloadCloud className="w-4 h-4 mr-2" />}
+              {csvPending ? "Exporting…" : "Download CSV"}
             </Button>
           </CardFooter>
         </Card>
@@ -125,9 +144,9 @@ export default function Export() {
             Preserves metadata and typing. Applies current global filter.
           </CardContent>
           <CardFooter>
-            <Button className="w-full" variant="outline" onClick={handleJsonExport}>
-              <DownloadCloud className="w-4 h-4 mr-2" />
-              Download JSON
+            <Button className="w-full" variant="outline" onClick={handleJsonExport} disabled={jsonPending}>
+              {jsonPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <DownloadCloud className="w-4 h-4 mr-2" />}
+              {jsonPending ? "Exporting…" : "Download JSON"}
             </Button>
           </CardFooter>
         </Card>
@@ -142,9 +161,9 @@ export default function Export() {
             Generates a complete snapshot ignoring filters, includes manifest and checksums.
           </CardContent>
           <CardFooter>
-            <Button className="w-full" onClick={handleAirgapExport} disabled={exportAirgap.isPending}>
-              {exportAirgap.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Package className="w-4 h-4 mr-2" />}
-              Generate Package
+            <Button className="w-full" onClick={handleAirgapExport} disabled={airgapPending}>
+              {airgapPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Package className="w-4 h-4 mr-2" />}
+              {airgapPending ? "Generating…" : "Generate Package"}
             </Button>
           </CardFooter>
         </Card>
@@ -169,7 +188,7 @@ export default function Export() {
                 <div className="font-mono mt-1 text-primary">{airgapResult.manifest.total_indicators.toLocaleString()}</div>
               </div>
             </div>
-            
+
             <div className="space-y-2">
               <Label className="text-muted-foreground text-xs uppercase tracking-wider">SHA-256 Checksum</Label>
               <div className="p-3 bg-muted rounded-md font-mono text-sm break-all text-primary/80 border border-border">
@@ -183,7 +202,7 @@ export default function Export() {
                 {airgapResult.manifest.feeds.map((f: any, i: number) => (
                   <div key={i} className="flex justify-between p-3 text-sm">
                     <span className="font-medium">{f.name}</span>
-                    <span className="font-mono text-muted-foreground">{f.count}</span>
+                    <span className="font-mono text-muted-foreground">{f.count.toLocaleString()}</span>
                   </div>
                 ))}
               </div>
