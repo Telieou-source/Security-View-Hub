@@ -83,11 +83,11 @@ function detectFieldMapping(headers: string[]): FieldMapping {
   const fieldAliases: Record<string, string[]> = {
     indicator: ["indicator", "ip", "ip_address", "ioc", "value", "host", "domain", "url", "hash", "md5", "sha256", "sha1"],
     indicator_type: ["indicator_type", "type", "ioc_type", "category"],
-    first_seen: ["first_seen", "first_seen_utc", "firstseen", "date_added", "date", "firstseen_utc"],
-    last_seen: ["last_seen", "last_seen_utc", "lastseen", "updated", "last_online"],
+    first_seen: ["first_seen", "first_seen_utc", "firstseen", "date_added", "date", "firstseen_utc", "submission_time", "submitted_at", "reported_at", "timestamp"],
+    last_seen: ["last_seen", "last_seen_utc", "lastseen", "updated", "last_online", "verification_time", "verified_at"],
     confidence: ["confidence", "score", "risk_score"],
     country: ["country", "country_code", "cc", "geo_country"],
-    description: ["description", "comment", "notes", "reason", "threat_name", "family", "malware_family", "malware", "tags", "tag"],
+    description: ["description", "comment", "notes", "reason", "threat_name", "family", "malware_family", "malware", "tags", "tag", "target", "brand", "category", "classification"],
   };
 
   for (const [field, aliases] of Object.entries(fieldAliases)) {
