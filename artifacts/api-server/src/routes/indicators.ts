@@ -55,6 +55,45 @@ router.get("/", async (req, res) => {
   });
 });
 
+router.get("/:id/related", async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid indicator id" });
+    return;
+  }
+
+  const [target] = await db
+    .select()
+    .from(indicatorsTable)
+    .where(eq(indicatorsTable.id, id))
+    .limit(1);
+
+  if (!target) {
+    res.status(404).json({ error: "Indicator not found" });
+    return;
+  }
+
+  // Return the indicator itself with an empty related list if it has no correlation_id
+  if (!target.correlation_id) {
+    res.json({ indicator: target, related: [] });
+    return;
+  }
+
+  const related = await db
+    .select()
+    .from(indicatorsTable)
+    .where(
+      and(
+        eq(indicatorsTable.correlation_id, target.correlation_id),
+        // exclude the target itself
+        sql`${indicatorsTable.id} != ${id}`
+      )
+    )
+    .orderBy(indicatorsTable.indicator_type);
+
+  res.json({ indicator: target, related });
+});
+
 router.post("/import", async (req, res) => {
   const parsed = ImportIndicatorsBody.safeParse(req.body);
   if (!parsed.success) {

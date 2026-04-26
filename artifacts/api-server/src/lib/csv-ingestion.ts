@@ -14,6 +14,8 @@ export interface NormalizedIndicator {
   confidence?: number | null;
   country?: string | null;
   description?: string | null;
+  /** Shared UUID for all indicators that came from the same source row */
+  correlation_id?: string | null;
 }
 
 export interface IngestResult {
@@ -235,7 +237,19 @@ function extractIndicatorsFromLine(
       first_seen: null,
       last_seen: null,
       confidence: null,
+      correlation_id: null, // assigned below when multiple indicators share a line
     });
+  }
+
+  // When a single line produced multiple indicators, link them with a shared correlation_id
+  if (results.length > 1) {
+    // Propagate country from any IP indicator to siblings that have none
+    const ipCountry = results.find(r => r.indicator_type === "ip" && r.country)?.country ?? null;
+    const sharedCorrelationId = crypto.randomUUID();
+    for (const r of results) {
+      r.correlation_id = sharedCorrelationId;
+      if (!r.country && ipCountry) r.country = ipCountry;
+    }
   }
 
   return results;
@@ -356,6 +370,10 @@ export function parseCsvToIndicators(
           }
         }
 
+        // Generate a shared correlation_id for all indicators from this row when there are multiple
+        const hasMultiple = extraIndicatorCols.length > 0;
+        const rowCorrelationId = hasMultiple ? crypto.randomUUID() : null;
+
         // Helper to build and push one indicator from a raw value + optional forced type
         const pushIndicator = (rawValue: string, forcedType?: string) => {
           const v = sanitizeField(rawValue);
@@ -371,6 +389,7 @@ export function parseCsvToIndicators(
             // All indicators on a row share the resolved country (IP geo enrichment propagates to URLs/domains)
             country: rowCountry,
             description: sharedDescription,
+            correlation_id: rowCorrelationId,
           });
         };
 
@@ -424,6 +443,8 @@ export async function upsertIndicators(
               confidence: ind.confidence,
               country: ind.country,
               description: ind.description,
+              // Preserve or set correlation_id (don't overwrite an existing one with null)
+              ...(ind.correlation_id ? { correlation_id: ind.correlation_id } : {}),
               updated_at: new Date(),
             })
             .where(eq(indicatorsTable.id, existing.id));
@@ -438,6 +459,7 @@ export async function upsertIndicators(
             confidence: ind.confidence,
             country: ind.country,
             description: ind.description,
+            correlation_id: ind.correlation_id ?? null,
             updated_at: new Date(),
           });
           added++;
