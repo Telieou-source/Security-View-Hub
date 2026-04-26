@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Shield, Activity, Globe, Database, Loader2 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import WorldThreatMap from "@/components/WorldThreatMap";
+import { useLocation } from "wouter";
 
 const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
 function countryName(code: string): string {
@@ -11,6 +12,7 @@ function countryName(code: string): string {
 }
 
 export default function Dashboard() {
+  const [, navigate] = useLocation();
   const { data: stats, isLoading: statsLoading } = useGetStats({ query: { queryKey: getGetStatsQueryKey() } });
   const { data: byType, isLoading: typeLoading } = useGetStatsByType({ query: { queryKey: getGetStatsByTypeQueryKey() } });
   const { data: byCountry, isLoading: countryLoading } = useGetStatsByCountry({ query: { queryKey: getGetStatsByCountryQueryKey() } });
@@ -25,6 +27,12 @@ export default function Dashboard() {
   }
 
   const CHART_COLORS = ['#00e5ff', '#00b3ff', '#0080ff', '#8000ff', '#ff00aa'];
+
+  const countryChartData = (byCountry || []).slice(0, 10).map(r => ({
+    count: r.count,
+    label: countryName(r.label),
+    code: r.label,
+  }));
 
   return (
     <div className="p-8 space-y-6">
@@ -102,9 +110,14 @@ export default function Dashboard() {
 
       {/* Charts */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <Card className="bg-card/50 backdrop-blur border-border col-span-2 lg:col-span-1">
+
+        {/* Indicators by Type */}
+        <Card className="bg-card/50 backdrop-blur border-border col-span-2 lg:col-span-1 group">
           <CardHeader>
-            <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Indicators by Type</CardTitle>
+            <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              Indicators by Type
+              <span className="text-[10px] font-normal normal-case tracking-normal text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity">click to filter</span>
+            </CardTitle>
           </CardHeader>
           <CardContent className="h-[260px]">
             {typeLoading ? (
@@ -116,7 +129,12 @@ export default function Dashboard() {
                   <XAxis dataKey="label" stroke="#666" fontSize={12} tickLine={false} axisLine={false} />
                   <YAxis stroke="#666" fontSize={12} tickLine={false} axisLine={false} />
                   <Tooltip cursor={{ fill: 'rgba(255,255,255,0.05)' }} contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '4px' }} />
-                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                  <Bar
+                    dataKey="count"
+                    radius={[4, 4, 0, 0]}
+                    style={{ cursor: 'pointer' }}
+                    onClick={(data: any) => navigate(`/indicators?type=${encodeURIComponent(data.label)}`)}
+                  >
                     {(byType || []).map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                     ))}
@@ -127,9 +145,13 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="bg-card/50 backdrop-blur border-border col-span-2 lg:col-span-1">
+        {/* Top Feed Sources */}
+        <Card className="bg-card/50 backdrop-blur border-border col-span-2 lg:col-span-1 group">
           <CardHeader>
-            <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Top Feed Sources</CardTitle>
+            <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              Top Feed Sources
+              <span className="text-[10px] font-normal normal-case tracking-normal text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity">click to filter</span>
+            </CardTitle>
           </CardHeader>
           <CardContent className="h-[260px]">
             {feedLoading ? (
@@ -141,16 +163,26 @@ export default function Dashboard() {
                   <XAxis type="number" stroke="#666" fontSize={12} tickLine={false} axisLine={false} />
                   <YAxis dataKey="label" type="category" stroke="#666" fontSize={12} tickLine={false} axisLine={false} width={100} />
                   <Tooltip cursor={{ fill: 'rgba(255,255,255,0.05)' }} contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '4px' }} />
-                  <Bar dataKey="count" radius={[0, 4, 4, 0]} fill="hsl(var(--primary))" />
+                  <Bar
+                    dataKey="count"
+                    radius={[0, 4, 4, 0]}
+                    fill="hsl(var(--primary))"
+                    style={{ cursor: 'pointer' }}
+                    onClick={(data: any) => navigate(`/indicators?source=${encodeURIComponent(data.label)}`)}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             )}
           </CardContent>
         </Card>
 
-        <Card className="bg-card/50 backdrop-blur border-border col-span-2 lg:col-span-1">
+        {/* Top Countries */}
+        <Card className="bg-card/50 backdrop-blur border-border col-span-2 lg:col-span-1 group">
           <CardHeader>
-            <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Top Countries</CardTitle>
+            <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              Top Countries
+              <span className="text-[10px] font-normal normal-case tracking-normal text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity">click to filter</span>
+            </CardTitle>
           </CardHeader>
           <CardContent className="h-[260px]">
             {countryLoading ? (
@@ -158,7 +190,7 @@ export default function Dashboard() {
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
-                  data={(byCountry || []).slice(0, 10).map(r => ({ ...r, label: countryName(r.label) }))}
+                  data={countryChartData}
                   layout="vertical"
                   margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
                 >
@@ -166,12 +198,19 @@ export default function Dashboard() {
                   <XAxis type="number" stroke="#666" fontSize={12} tickLine={false} axisLine={false} />
                   <YAxis dataKey="label" type="category" stroke="#666" fontSize={11} tickLine={false} axisLine={false} width={120} />
                   <Tooltip cursor={{ fill: 'rgba(255,255,255,0.05)' }} contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '4px' }} />
-                  <Bar dataKey="count" radius={[0, 4, 4, 0]} fill="hsl(var(--chart-4))" />
+                  <Bar
+                    dataKey="count"
+                    radius={[0, 4, 4, 0]}
+                    fill="hsl(var(--chart-4))"
+                    style={{ cursor: 'pointer' }}
+                    onClick={(data: any) => navigate(`/indicators?country=${encodeURIComponent(data.code)}`)}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             )}
           </CardContent>
         </Card>
+
       </div>
     </div>
   );
