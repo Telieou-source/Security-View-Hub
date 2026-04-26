@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "TsOaHFNC0t7aqit1MGC50"
+uri = "file://threat-intel-dist.tar.gz"
+type = "unspecified"
+title = "threat-intel-dist.tar.gz — Air-Gapped Distribution (37 MB)"
