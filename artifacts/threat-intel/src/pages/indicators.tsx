@@ -10,6 +10,8 @@ import { Loader2, Search, FilterX, ChevronLeft, ChevronRight, Link2, ExternalLin
 import { useQueryClient } from "@tanstack/react-query";
 import { COUNTRIES } from "@/lib/countries";
 
+const BASE_URL = import.meta.env.BASE_URL ?? "/";
+
 type Indicator = {
   id: number;
   indicator: string;
@@ -55,7 +57,7 @@ function CorrelationPanel({ indicator, onClose }: { indicator: Indicator; onClos
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/indicators/${id}/related`);
+      const res = await fetch(`${BASE_URL}api/indicators/${id}/related`);
       if (!res.ok) throw new Error(await res.text());
       const json = await res.json();
       setRelated(json.related ?? []);
