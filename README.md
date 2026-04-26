@@ -243,4 +243,4 @@ The parser auto-detects the format — no configuration required.
 
 ## License
 
-MIT
+No liscense, free to use
