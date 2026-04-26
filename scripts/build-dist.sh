@@ -239,3 +239,23 @@ UPGRADING
   3. Restart the server.
 
 README
+
+chmod +x "${DIST_DIR}/start.sh"
+
+# ── 4. Create tarball ─────────────────────────────────────────────────────────
+echo "[4/4] Creating tarball..."
+tar -czf "${TARBALL}" "${DIST_NAME}/"
+rm -rf "${DIST_DIR}"
+
+TARBALL_SIZE=$(du -sh "${TARBALL}" | cut -f1)
+echo ""
+echo "╔══════════════════════════════════════════════════════╗"
+echo "║  Done! Output: ${TARBALL} (${TARBALL_SIZE})          "
+echo "╚══════════════════════════════════════════════════════╝"
+echo ""
+echo "  Transfer this file to the air-gapped machine and run:"
+echo "    tar -xzf ${TARBALL}"
+echo "    cd ${DIST_NAME}"
+echo "    cp .env.example .env  # then edit DATABASE_URL"
+echo "    ./start.sh"
+echo ""
