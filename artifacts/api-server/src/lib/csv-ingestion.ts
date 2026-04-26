@@ -331,15 +331,36 @@ export function parseCsvToIndicators(
         const sharedDescription = fieldMap.description !== undefined ? sanitizeField(cols[fieldMap.description]) || null : null;
         const sharedRawCountry = fieldMap.country !== undefined ? sanitizeField(cols[fieldMap.country]) || null : null;
 
+        // Pre-resolve row-level country: look up geoip on any IP column so that
+        // sibling indicators (URLs, domains) on the same row inherit the country.
+        let rowCountry: string | null = sharedRawCountry;
+        if (!rowCountry) {
+          // Check primary column
+          const primaryRaw = sanitizeField(cols[fieldMap.indicator] ?? "");
+          const primaryType = (fieldMap.indicator_type !== undefined ? sanitizeField(cols[fieldMap.indicator_type]) : "")
+            || detectIndicatorType(primaryRaw, feedType);
+          if (primaryType === "ip" && primaryRaw) {
+            rowCountry = lookupCountry(primaryRaw);
+          }
+          // Check extra indicator columns for an IP
+          if (!rowCountry) {
+            for (const extra of extraIndicatorCols) {
+              if (extra.inferredType === "ip") {
+                const ipVal = sanitizeField(cols[extra.index] ?? "");
+                if (ipVal) {
+                  rowCountry = lookupCountry(ipVal);
+                  if (rowCountry) break;
+                }
+              }
+            }
+          }
+        }
+
         // Helper to build and push one indicator from a raw value + optional forced type
         const pushIndicator = (rawValue: string, forcedType?: string) => {
           const v = sanitizeField(rawValue);
           if (!v) return;
           const indicator_type = forcedType || (fieldMap.indicator_type !== undefined ? sanitizeField(cols[fieldMap.indicator_type]) : "") || detectIndicatorType(v, feedType);
-          let resolvedCountry = sharedRawCountry;
-          if (!resolvedCountry && indicator_type === "ip") {
-            resolvedCountry = lookupCountry(v);
-          }
           indicators.push({
             indicator: v,
             indicator_type,
@@ -347,7 +368,8 @@ export function parseCsvToIndicators(
             first_seen: sharedFirstSeen,
             last_seen: sharedLastSeen,
             confidence: sharedConfidence,
-            country: resolvedCountry,
+            // All indicators on a row share the resolved country (IP geo enrichment propagates to URLs/domains)
+            country: rowCountry,
             description: sharedDescription,
           });
         };
