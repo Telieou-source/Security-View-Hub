@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   ComposableMap,
   Geographies,
@@ -31,11 +31,11 @@ for (const [alpha2, numeric] of Object.entries(ALPHA2_TO_NUMERIC)) {
 function getThreatColor(count: number, max: number): string {
   if (count === 0) return "hsl(215 25% 14%)";
   const ratio = count / max;
-  if (ratio < 0.15) return "hsl(195 80% 25%)";   // very low — deep teal
-  if (ratio < 0.3)  return "hsl(45 90% 35%)";    // low — amber
-  if (ratio < 0.5)  return "hsl(30 95% 40%)";    // medium — orange
-  if (ratio < 0.75) return "hsl(15 95% 42%)";    // high — red-orange
-  return "hsl(0 90% 45%)";                        // critical — red
+  if (ratio < 0.15) return "hsl(195 80% 25%)";
+  if (ratio < 0.3)  return "hsl(45 90% 35%)";
+  if (ratio < 0.5)  return "hsl(30 95% 40%)";
+  if (ratio < 0.75) return "hsl(15 95% 42%)";
+  return "hsl(0 90% 45%)";
 }
 
 interface CountByField {
@@ -55,6 +55,7 @@ interface Props {
 }
 
 export default function WorldThreatMap({ data }: Props) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
 
   const countMap: Record<string, number> = {};
@@ -64,16 +65,25 @@ export default function WorldThreatMap({ data }: Props) {
 
   const max = Math.max(1, ...Object.values(countMap));
 
+  // Convert clientX/Y to coordinates relative to the container div.
+  // Using absolute positioning on the tooltip avoids the offset that occurs
+  // when fixed positioning is combined with scrolled or transformed parents.
+  const toRelative = (clientX: number, clientY: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return { x: clientX, y: clientY };
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  };
+
   const legendStops = [
-    { label: "None", color: "hsl(215 25% 14%)" },
-    { label: "Low", color: "hsl(195 80% 25%)" },
-    { label: "Medium", color: "hsl(45 90% 35%)" },
-    { label: "High", color: "hsl(15 95% 42%)" },
-    { label: "Critical", color: "hsl(0 90% 45%)" },
+    { label: "None",     color: "hsl(215 25% 14%)" },
+    { label: "Low",      color: "hsl(195 80% 25%)" },
+    { label: "Medium",   color: "hsl(45 90% 35%)"  },
+    { label: "High",     color: "hsl(15 95% 42%)"  },
+    { label: "Critical", color: "hsl(0 90% 45%)"   },
   ];
 
   return (
-    <div className="relative w-full h-full select-none">
+    <div ref={containerRef} className="relative w-full h-full select-none overflow-hidden">
       <ComposableMap
         projectionConfig={{ scale: 147, center: [0, 10] }}
         style={{ width: "100%", height: "100%" }}
@@ -95,22 +105,23 @@ export default function WorldThreatMap({ data }: Props) {
                     strokeWidth={0.4}
                     style={{
                       default: { outline: "none" },
-                      hover: { outline: "none", fill: count > 0 ? "hsl(0 90% 55%)" : "hsl(215 30% 20%)", cursor: count > 0 ? "pointer" : "default" },
+                      hover: {
+                        outline: "none",
+                        fill: count > 0 ? "hsl(0 90% 55%)" : "hsl(215 30% 20%)",
+                        cursor: count > 0 ? "pointer" : "default",
+                      },
                       pressed: { outline: "none" },
                     }}
                     onMouseEnter={(e) => {
                       if (alpha2) {
-                        setTooltip({
-                          name: geo.properties.name as string,
-                          count,
-                          x: e.clientX,
-                          y: e.clientY,
-                        });
+                        const { x, y } = toRelative(e.clientX, e.clientY);
+                        setTooltip({ name: geo.properties.name as string, count, x, y });
                       }
                     }}
                     onMouseMove={(e) => {
                       if (tooltip) {
-                        setTooltip((t) => t ? { ...t, x: e.clientX, y: e.clientY } : null);
+                        const { x, y } = toRelative(e.clientX, e.clientY);
+                        setTooltip(t => t ? { ...t, x, y } : null);
                       }
                     }}
                     onMouseLeave={() => setTooltip(null)}
@@ -122,19 +133,19 @@ export default function WorldThreatMap({ data }: Props) {
         </ZoomableGroup>
       </ComposableMap>
 
-      {/* Tooltip */}
+      {/* Tooltip — absolutely positioned relative to the container */}
       {tooltip && (
         <div
-          className="fixed z-50 pointer-events-none px-3 py-2 rounded text-xs font-mono shadow-lg border border-border"
+          className="absolute z-50 pointer-events-none px-3 py-2 rounded text-xs font-mono shadow-lg border border-border"
           style={{
-            left: tooltip.x + 12,
-            top: tooltip.y - 10,
+            left: tooltip.x + 14,
+            top: tooltip.y - 36,
             backgroundColor: "hsl(215 30% 8%)",
             color: tooltip.count > 0 ? "hsl(0 85% 60%)" : "hsl(215 20% 60%)",
           }}
         >
           <div className="font-semibold text-foreground">{tooltip.name}</div>
-          <div>{tooltip.count > 0 ? `${tooltip.count} indicator${tooltip.count !== 1 ? "s" : ""}` : "No indicators"}</div>
+          <div>{tooltip.count > 0 ? `${tooltip.count.toLocaleString()} indicator${tooltip.count !== 1 ? "s" : ""}` : "No indicators"}</div>
         </div>
       )}
 
