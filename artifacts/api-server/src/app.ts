@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import { fileURLToPath } from "node:url";
@@ -33,6 +33,19 @@ app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 app.use("/api", router);
+
+// Global error handler — logs the real cause (e.g. pg errors wrapped by Drizzle)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
+  const cause = err instanceof Error ? (err.cause as Error | undefined) : undefined;
+  logger.error({
+    err,
+    cause: cause ? { message: cause.message, code: (cause as NodeJS.ErrnoException).code } : undefined,
+    req: { method: req.method, url: req.url },
+  }, "unhandled error");
+  const message = cause?.message ?? (err instanceof Error ? err.message : "Internal Server Error");
+  res.status(500).json({ error: message });
+});
 
 // In production (pre-built distribution), serve the bundled React frontend
 // from the ./public/ directory that sits alongside this server bundle.
