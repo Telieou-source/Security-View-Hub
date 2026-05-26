@@ -18,21 +18,3 @@ id = "kcWk6f1KlmJ0Rxl6mLGS7"
 uri = "file://threat-intel-dist.zip"
 type = "unspecified"
 title = "threat-intel-dist.zip (Windows — updated)"
-
-[[outputs]]
-id = "0sli0BVJDd3ql_9dIEb-O"
-uri = "file://server-update.zip"
-type = "unspecified"
-title = "server-update.zip — extract and replace server.mjs"
-
-[[outputs]]
-id = "IqMikNCtCEm_kuODAAlaL"
-uri = "file://server-update.tar.gz"
-type = "unspecified"
-title = "server-update.tar.gz — updated server.mjs"
-
-[[outputs]]
-id = "6ggr2kmws_2V_uUi0UaTV"
-uri = "file://start-bat-update.zip"
-type = "unspecified"
-title = "start-bat-update.zip — extract and replace start.bat"
