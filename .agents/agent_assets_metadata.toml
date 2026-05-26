@@ -24,3 +24,9 @@ id = "0sli0BVJDd3ql_9dIEb-O"
 uri = "file://server-update.zip"
 type = "unspecified"
 title = "server-update.zip — extract and replace server.mjs"
+
+[[outputs]]
+id = "IqMikNCtCEm_kuODAAlaL"
+uri = "file://server-update.tar.gz"
+type = "unspecified"
+title = "server-update.tar.gz — updated server.mjs"
