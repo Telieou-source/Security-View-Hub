@@ -12,3 +12,9 @@ id = "PIxfXyLqBhAnKt65oXXOv"
 uri = "file://README.md"
 type = "text"
 title = "README.md — GitHub README"
+
+[[outputs]]
+id = "kcWk6f1KlmJ0Rxl6mLGS7"
+uri = "file://threat-intel-dist.zip"
+type = "unspecified"
+title = "threat-intel-dist.zip (Windows)"
