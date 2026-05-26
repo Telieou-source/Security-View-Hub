@@ -18,3 +18,9 @@ id = "kcWk6f1KlmJ0Rxl6mLGS7"
 uri = "file://threat-intel-dist.zip"
 type = "unspecified"
 title = "threat-intel-dist.zip (Windows — server fix)"
+
+[[outputs]]
+id = "0sli0BVJDd3ql_9dIEb-O"
+uri = "file://server-update.zip"
+type = "unspecified"
+title = "server-update.zip — extract and replace server.mjs"
