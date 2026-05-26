@@ -99,11 +99,12 @@ The UI opens at the URL shown in the frontend terminal output.
 
 Download the latest pre-built distribution from the [GitHub Releases page](https://github.com/Telieou-source/Security-View-Hub/releases):
 
-```
-threat-intel-dist.tar.gz  (~37 MB)
-```
+| File | Platform | Size |
+|------|----------|------|
+| `threat-intel-dist.zip` | Windows (extracts natively in Explorer) | ~119 MB |
+| `threat-intel-dist.tar.gz` | Linux / macOS | ~37 MB |
 
-This tarball requires only **Node.js v18+** and **PostgreSQL 13+** — no npm, no internet.
+Both packages require only **Node.js v18+** and **PostgreSQL 13+** — no npm, no internet.
 
 ### Build from source
 
