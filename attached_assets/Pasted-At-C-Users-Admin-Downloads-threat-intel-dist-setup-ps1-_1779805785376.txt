@@ -1,0 +1,46 @@
+At C:\Users\Admin\Downloads\threat-intel-dist\setup.ps1:14 char:25
++     Write-Host "  $("â”€" * $text.Length)" -ForegroundColor DarkGray
++                         ~~~~~~~~~~~~~~~~~
+The string is missing the terminator: ".
+At C:\Users\Admin\Downloads\threat-intel-dist\setup.ps1:14 char:24
++     Write-Host "  $("â”€" * $text.Length)" -ForegroundColor DarkGray
++                        ~~~~~~~~~~~~~~~~~~
+Unexpected token '€" * $text.Length)' in expression or statement.
+At C:\Users\Admin\Downloads\threat-intel-dist\setup.ps1:14 char:43
++     Write-Host "  $("â”€" * $text.Length)" -ForegroundColor DarkGray
++                                           ~
+Missing closing ')' in subexpression.
+At C:\Users\Admin\Downloads\threat-intel-dist\setup.ps1:100 char:28
++     Set-Content -Path ".env" -Value $envContent -Encoding UTF8
++                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Unexpected token '" -Value $envContent -Encoding UTF8
+    Write-Ok "' in expression or statement.
+At C:\Users\Admin\Downloads\threat-intel-dist\setup.ps1:101 char:20
++     Write-Ok ".env created."
++                    ~~~~~~~~~
+Unexpected token 'created."
+    # â”€â”€ 4. Create the database â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    Write-Header "Database' in expression or statement.
+At C:\Users\Admin\Downloads\threat-intel-dist\setup.ps1:111 char:23
++             Write-Ok "Database '$pgDb' created."
++                       ~~~~~~~~
+Unexpected token 'Database' in expression or statement.
+At C:\Users\Admin\Downloads\threat-intel-dist\setup.ps1:113 char:91
++ ... n "Could not create database (it may already exist â€” that's fine)."
++                                                                          ~
+Missing closing ')' in expression.
+At C:\Users\Admin\Downloads\threat-intel-dist\setup.ps1:125 char:5
++     } else {
++     ~
+Unexpected token '}' in expression or statement.
+At C:\Users\Admin\Downloads\threat-intel-dist\setup.ps1:130 char:1
++ }
++ ~
+Unexpected token '}' in expression or statement.
+At C:\Users\Admin\Downloads\threat-intel-dist\setup.ps1:143 char:51
++ ... -Host "  Then open: http://localhost:$appPort" -ForegroundColor White
++                                                  ~~~~~~~~~~~~~~~~~~~~~~~~
+The string is missing the terminator: ".
+    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : TerminatorExpectedAtEndOfString

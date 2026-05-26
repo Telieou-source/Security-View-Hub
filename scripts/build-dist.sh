@@ -223,9 +223,11 @@ pause
 SETUPBAT
 
 # ── setup.ps1 (Windows — interactive first-time setup) ────────────────────────
+# NOTE: ASCII-only characters used throughout so PowerShell 5.1 reads the file
+#       correctly regardless of the system code page (no UTF-8 BOM required).
 cat > "${DIST_DIR}/setup.ps1" << 'SETUPPS1'
 #Requires -Version 5.1
-# setup.ps1 — Interactive first-time setup for Windows
+# setup.ps1 -- Interactive first-time setup for Windows
 # Run via setup.bat, or directly:
 #   powershell -ExecutionPolicy Bypass -File setup.ps1
 
@@ -235,111 +237,118 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ScriptDir
 
 function Write-Header($text) {
+    $line = "-" * ($text.Length + 2)
     Write-Host ""
     Write-Host "  $text" -ForegroundColor Cyan
-    Write-Host "  $("─" * $text.Length)" -ForegroundColor DarkGray
+    Write-Host "  $line" -ForegroundColor DarkGray
 }
 
-function Write-Ok($text)    { Write-Host "  [OK] $text" -ForegroundColor Green }
-function Write-Warn($text)  { Write-Host "  [!!] $text" -ForegroundColor Yellow }
-function Write-Err($text)   { Write-Host "  [ERROR] $text" -ForegroundColor Red }
-function Write-Step($text)  { Write-Host "  -->  $text" -ForegroundColor White }
+function Write-Ok($text)   { Write-Host "  [OK]    $text" -ForegroundColor Green }
+function Write-Warn($text) { Write-Host "  [WARN]  $text" -ForegroundColor Yellow }
+function Write-Err($text)  { Write-Host "  [ERROR] $text" -ForegroundColor Red }
+function Write-Step($text) { Write-Host "  -->  $text"   -ForegroundColor White }
 
 Write-Host ""
-Write-Host "  ╔════════════════════════════════════════════╗" -ForegroundColor DarkCyan
-Write-Host "  ║  Global Threat-Intel — Windows Setup      ║" -ForegroundColor DarkCyan
-Write-Host "  ╚════════════════════════════════════════════╝" -ForegroundColor DarkCyan
+Write-Host "  +--------------------------------------------+" -ForegroundColor DarkCyan
+Write-Host "  |  Global Threat-Intel -- Windows Setup      |" -ForegroundColor DarkCyan
+Write-Host "  +--------------------------------------------+" -ForegroundColor DarkCyan
 
-# ── 1. Check Node.js ──────────────────────────────────────────────────────────
+# -- 1. Check Node.js ---------------------------------------------------------
 Write-Header "Checking prerequisites"
 
 try {
-    $nodeVer = & node --version 2>&1
-    $nodeMajor = [int]($nodeVer -replace 'v(\d+)\..*','$1')
+    $nodeVer = (& node --version 2>&1).ToString().Trim()
+    $nodeMajor = [int]($nodeVer -replace '^v(\d+)\..*', '$1')
     if ($nodeMajor -ge 18) {
         Write-Ok "Node.js $nodeVer"
     } else {
         Write-Err "Node.js $nodeVer found but v18+ is required."
         Write-Step "Download: https://nodejs.org/en/download"
+        Read-Host "Press Enter to exit"
         exit 1
     }
 } catch {
     Write-Err "Node.js not found. Install v18+ from https://nodejs.org/en/download"
+    Read-Host "Press Enter to exit"
     exit 1
 }
 
-# ── 2. Check PostgreSQL ────────────────────────────────────────────────────────
+# -- 2. Check PostgreSQL -------------------------------------------------------
 $psqlPath = $null
 try {
     $psqlPath = (Get-Command psql -ErrorAction Stop).Source
-    $psqlVer = (& psql --version 2>&1) -replace "psql \(PostgreSQL\) ",""
-    Write-Ok "PostgreSQL $psqlVer  ($psqlPath)"
+    $psqlVerRaw = (& psql --version 2>&1).ToString()
+    $psqlVer = $psqlVerRaw -replace "psql \(PostgreSQL\) ", ""
+    Write-Ok "PostgreSQL $psqlVer"
 } catch {
     Write-Warn "psql not found in PATH."
-    Write-Step "Make sure PostgreSQL\bin is in your system PATH, or add it now."
+    Write-Step "Make sure PostgreSQL\bin is in your system PATH."
     Write-Step "Download: https://www.postgresql.org/download/windows/"
     Write-Host ""
-    $continue = Read-Host "  Continue anyway? (y/N)"
-    if ($continue -notmatch '^[yY]') { exit 1 }
+    $cont = Read-Host "  Continue anyway? (y/N)"
+    if ($cont -notmatch '^[yY]') { exit 1 }
 }
 
-# ── 3. Configure .env ─────────────────────────────────────────────────────────
+# -- 3. Configure .env --------------------------------------------------------
 Write-Header "Configuration"
 
 if (Test-Path ".env") {
-    Write-Ok ".env already exists — skipping creation."
+    Write-Ok ".env already exists -- skipping creation."
+    $appPort = "3000"
+    $content = Get-Content ".env" -Raw
+    if ($content -match 'PORT=(\d+)') { $appPort = $Matches[1] }
 } else {
     Write-Step "Creating .env from template..."
-
     Write-Host ""
     Write-Host "  Enter your PostgreSQL connection details:" -ForegroundColor White
-    $pgUser = Read-Host "    PostgreSQL username (default: postgres)"
+
+    $pgUser = Read-Host "    PostgreSQL username [postgres]"
     if ([string]::IsNullOrWhiteSpace($pgUser)) { $pgUser = "postgres" }
 
-    $pgPass = Read-Host "    PostgreSQL password" -AsSecureString
+    $pgPassSecure = Read-Host "    PostgreSQL password" -AsSecureString
     $pgPassPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-        [Runtime.InteropServices.Marshal]::SecureStringToBSTR($pgPass)
+        [Runtime.InteropServices.Marshal]::SecureStringToBSTR($pgPassSecure)
     )
 
-    $pgHost = Read-Host "    PostgreSQL host (default: localhost)"
+    $pgHost = Read-Host "    PostgreSQL host [localhost]"
     if ([string]::IsNullOrWhiteSpace($pgHost)) { $pgHost = "localhost" }
 
-    $pgPort = Read-Host "    PostgreSQL port (default: 5432)"
+    $pgPort = Read-Host "    PostgreSQL port [5432]"
     if ([string]::IsNullOrWhiteSpace($pgPort)) { $pgPort = "5432" }
 
-    $pgDb = Read-Host "    Database name (default: threatintel)"
+    $pgDb = Read-Host "    Database name [threatintel]"
     if ([string]::IsNullOrWhiteSpace($pgDb)) { $pgDb = "threatintel" }
 
-    $appPort = Read-Host "    App port (default: 3000)"
+    $appPort = Read-Host "    App port [3000]"
     if ([string]::IsNullOrWhiteSpace($appPort)) { $appPort = "3000" }
 
-    # Generate a random session secret
-    $secret = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 48 | ForEach-Object { [char]$_ })
+    $secret = -join ((65..90) + (97..122) + (48..57) |
+        Get-Random -Count 48 | ForEach-Object { [char]$_ })
 
-    $dbUrl = "postgres://${pgUser}:${pgPassPlain}@${pgHost}:${pgPort}/${pgDb}"
+    $dbUrl = "postgres://" + $pgUser + ":" + $pgPassPlain + "@" + $pgHost + ":" + $pgPort + "/" + $pgDb
 
-    $envContent = @"
-DATABASE_URL=$dbUrl
-SESSION_SECRET=$secret
-PORT=$appPort
-"@
-    Set-Content -Path ".env" -Value $envContent -Encoding UTF8
+    $envLines = @(
+        "DATABASE_URL=" + $dbUrl,
+        "SESSION_SECRET=" + $secret,
+        "PORT=" + $appPort
+    )
+    Set-Content -Path ".env" -Value $envLines -Encoding ASCII
     Write-Ok ".env created."
 
-    # ── 4. Create the database ────────────────────────────────────────────────
+    # -- 4. Create database ---------------------------------------------------
     Write-Header "Database setup"
 
     if ($psqlPath) {
-        Write-Step "Creating database '$pgDb'..."
+        Write-Step "Creating database '$pgDb' (safe if it already exists)..."
         try {
             $env:PGPASSWORD = $pgPassPlain
             & psql -U $pgUser -h $pgHost -p $pgPort -c "CREATE DATABASE $pgDb;" 2>&1 | Out-Null
-            Write-Ok "Database '$pgDb' created."
+            Write-Ok "Database '$pgDb' ready."
         } catch {
-            Write-Warn "Could not create database (it may already exist — that's fine)."
+            Write-Warn "Could not create database -- it may already exist (that is fine)."
         }
 
-        Write-Step "Loading schema into '$pgDb'..."
+        Write-Step "Loading schema..."
         try {
             & psql -U $pgUser -h $pgHost -p $pgPort -d $pgDb -f "schema.sql" 2>&1 | Out-Null
             Write-Ok "Schema loaded."
@@ -347,27 +356,28 @@ PORT=$appPort
             Write-Err "Schema load failed: $_"
             Write-Step "Run manually: psql -U $pgUser -d $pgDb -f schema.sql"
         }
-        Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
+        $env:PGPASSWORD = ""
     } else {
-        Write-Warn "Skipping automatic database setup (psql not in PATH)."
+        Write-Warn "Skipping automatic DB setup (psql not in PATH)."
         Write-Step "Create the database manually, then run:"
         Write-Step "  psql -U <user> -d $pgDb -f schema.sql"
     }
 }
 
-# ── 5. Done ───────────────────────────────────────────────────────────────────
+# -- 5. Done ------------------------------------------------------------------
 Write-Host ""
-Write-Host "  ╔════════════════════════════════════════════╗" -ForegroundColor Green
-Write-Host "  ║  Setup complete!                           ║" -ForegroundColor Green
-Write-Host "  ╚════════════════════════════════════════════╝" -ForegroundColor Green
+Write-Host "  +--------------------------------------------+" -ForegroundColor Green
+Write-Host "  |  Setup complete!                           |" -ForegroundColor Green
+Write-Host "  +--------------------------------------------+" -ForegroundColor Green
 Write-Host ""
 Write-Host "  To start the server:" -ForegroundColor White
-Write-Host "    Double-click  start.bat" -ForegroundColor Cyan
-Write-Host "    — or —" -ForegroundColor DarkGray
+Write-Host "    Double-click start.bat" -ForegroundColor Cyan
+Write-Host "    -- or --" -ForegroundColor DarkGray
 Write-Host "    node server.mjs" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  Then open: http://localhost:$appPort" -ForegroundColor White
 Write-Host ""
+Read-Host "Press Enter to close"
 SETUPPS1
 
 # ── README.txt ────────────────────────────────────────────────────────────────
