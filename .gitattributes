@@ -1,0 +1,1 @@
+threat-intel-dist.zip filter=lfs diff=lfs merge=lfs -text
