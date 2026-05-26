@@ -6,7 +6,7 @@ import {
   ZoomableGroup,
 } from "react-simple-maps";
 
-const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+const GEO_URL = `${import.meta.env.BASE_URL}countries-110m.json`;
 
 // ISO 3166-1 alpha-2 → numeric mapping for common threat intel countries
 const ALPHA2_TO_NUMERIC: Record<string, number> = {
