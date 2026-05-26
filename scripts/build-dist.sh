@@ -141,7 +141,6 @@ chmod +x "${DIST_DIR}/start.sh"
 # ── start.bat (Windows — double-click launcher) ────────────────────────────────
 cat > "${DIST_DIR}/start.bat" << 'BATSCRIPT'
 @echo off
-setlocal EnableDelayedExpansion
 title Threat-Intel Server
 
 REM ── Change to the directory where this script lives ──────────────────────────
@@ -160,37 +159,14 @@ if not exist ".env" (
   exit /b 1
 )
 
-REM ── Load .env (skip blank lines and comments) ─────────────────────────────────
-for /f "usebackq tokens=1,* delims==" %%A in (".env") do (
-  set "line=%%A"
-  if not "!line!"=="" (
-    set "first=!line:~0,1!"
-    if not "!first!"=="#" (
-      set "%%A=%%B"
-    )
-  )
-)
-
-REM ── Defaults ──────────────────────────────────────────────────────────────────
-set NODE_ENV=production
-if "%PORT%"=="" set PORT=3000
-
-REM ── Validate DATABASE_URL ──────────────────────────────────────────────────────
-if "%DATABASE_URL%"=="" (
-  echo.
-  echo  ERROR: DATABASE_URL is not set in .env
-  echo  Edit .env and add: DATABASE_URL=postgres://user:pass@localhost:5432/threatintel
-  echo.
-  pause
-  exit /b 1
-)
-
 echo.
-echo  Starting Threat-Intel ^> http://localhost:%PORT%
+echo  Starting Threat-Intel -- open http://localhost:3000
 echo  Press Ctrl+C to stop.
 echo.
 
-node server.mjs
+REM ── Node 20+ loads .env natively; NODE_ENV forced to production ───────────────
+set NODE_ENV=production
+node --env-file=.env server.mjs
 if %ERRORLEVEL% neq 0 (
   echo.
   echo  Server exited with an error. Check the output above.
