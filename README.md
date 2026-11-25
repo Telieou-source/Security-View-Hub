@@ -244,4 +244,4 @@ The parser auto-detects the format — no configuration required.
 
 ## License
 
-No liscense, free to use
+No license file — free to use.
