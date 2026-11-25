@@ -3,7 +3,6 @@
 A full-stack threat intelligence platform designed for **air-gapped environments**. Manually ingest open-source CSV and plain-text threat feeds, normalize them into a unified indicator database, and explore the data through an interactive dashboard — with no internet dependency at runtime.
 
 ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Express%20%2B%20PostgreSQL-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
 ![Air-Gapped](https://img.shields.io/badge/deployment-air--gapped-orange)
 
 **Live demo:** [https://security-view-hub.replit.app](https://security-view-hub.replit.app)
@@ -239,9 +238,3 @@ The parser auto-detects the format — no configuration required.
 | `indicator_type` | string | Filter by type (`ip`, `domain`, `url`, `hash`, …) |
 | `country` | string | Filter by ISO 3166-1 alpha-2 country code |
 | `source_feed` | string | Filter by source feed name |
-
----
-
-## License
-
-No license file — free to use.
